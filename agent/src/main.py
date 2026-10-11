@@ -1,4 +1,6 @@
+import json
 from collectors.cpu import cpu_usage
+from collectors.container import container_usage
 from collectors.disk import disk_usage
 from collectors.memory import memory_usage
 from collectors.network import network_usage
@@ -9,6 +11,7 @@ def main() -> None:
         memory_reading = memory_usage()
         disk_reading = disk_usage()
         network_reading = network_usage()
+        containers_reading = container_usage()
         print(
             f"CPU usage: {cpu_reading['cpu_usage']}% at "
             f"{cpu_reading['timestamp']} | "
@@ -20,7 +23,8 @@ def main() -> None:
             f"{disk_reading['timestamp']} | "
             f"Network: {network_reading['bytes_sent']} bytes sent, "
             f"{network_reading['bytes_received']} bytes received at "
-            f"{network_reading['timestamp']}"
+            f"{network_reading['timestamp']} | Containers: "
+            f"{json.dumps(containers_reading)}"
         )
 
 if __name__ == "__main__":
