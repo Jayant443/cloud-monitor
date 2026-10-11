@@ -14,6 +14,7 @@ from collectors.memory import memory_usage
 from collectors.network import network_usage
 from collectors.process import process_usage
 from monitoring import AgentHealthMonitor
+from sender import send_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,8 @@ def main() -> None:
     endpoints = _configured_endpoints()
     process_enabled, process_pids, process_names = _configured_processes()
     collection_interval = _float_setting("COLLECTION_INTERVAL_SECONDS", 2)
+    backend_url = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    backend_timeout = _float_setting("BACKEND_TIMEOUT_SECONDS", 5)
     mount_points = _csv_setting("DISK_MOUNT_POINTS") or ["/"]
 
     for _ in range(100):
@@ -133,7 +136,9 @@ def main() -> None:
             "processes": process_reading,
             "agent_health": monitor.report(),
         }
-        print(json.dumps(_json_compatible(payload), allow_nan=False))
+        json_payload = _json_compatible(payload)
+        print(json.dumps(json_payload, allow_nan=False))
+        send_metrics(json_payload, backend_url, backend_timeout)
 
         remaining = collection_interval - (time.monotonic() - cycle_started)
         if remaining > 0:
