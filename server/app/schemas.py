@@ -150,3 +150,133 @@ class ValidationIssue(FlexibleModel):
 
 class ValidationErrorResponse(FlexibleModel):
     detail: list[ValidationIssue]
+
+class DatabaseReadModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+class MachineResponse(DatabaseReadModel):
+    machine_id: str
+    hostname: str | None
+    operating_system: str | None
+    os_version: str | None
+    architecture: str | None
+    ip_addresses: list[str]
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+class MachineListResponse(FlexibleModel):
+    items: list[MachineResponse]
+    total: int
+    limit: int
+    offset: int
+
+class DiskMetricResponse(DatabaseReadModel):
+    id: int
+    sampled_at: datetime
+    mount_point: str
+    usage_percent: float | None
+    used_bytes: int | None
+    free_bytes: int | None
+    total_bytes: int | None
+    collection_error: str | None
+
+class ContainerMetricResponse(DatabaseReadModel):
+    id: int
+    sampled_at: datetime | None
+    container_id: str | None
+    name: str | None
+    image: str | None
+    status: str | None
+    cpu_usage_percent: float | None
+    memory_usage_bytes: int | None
+    memory_limit_bytes: int | None
+    network_received_bytes: int | None
+    network_transmitted_bytes: int | None
+    block_read_bytes: int | None
+    block_write_bytes: int | None
+    restart_count: int | None
+    uptime_seconds: float | None
+    exit_code: int | None
+    health_status: str | None
+    collection_errors: list[str]
+
+class ApplicationHealthMetricResponse(DatabaseReadModel):
+    id: int
+    sampled_at: datetime | None
+    endpoint_name: str | None
+    response_status: int | None
+    response_time_seconds: float | None
+    available: bool | None
+    error: str | None
+
+class MetricSnapshotResponse(DatabaseReadModel):
+    id: int
+    machine_id: str | None
+    collected_at: datetime
+    cpu_timestamp: datetime | None
+    cpu_usage: float | None
+    cpu_collection_error: str | None
+    memory_timestamp: datetime | None
+    memory_usage: float | None
+    memory_used_bytes: int | None
+    memory_available_bytes: int | None
+    memory_total_bytes: int | None
+    memory_collection_error: str | None
+    disk_timestamp: datetime | None
+    disk_collection_error: str | None
+    disks: list[DiskMetricResponse]
+    network_timestamp: datetime | None
+    network_bytes_sent: int | None
+    network_bytes_received: int | None
+    network_bytes_sent_per_second: float | None
+    network_bytes_received_per_second: float | None
+    network_collection_error: str | None
+    container_collection_errors: list[str]
+    containers: list[ContainerMetricResponse]
+    application_health_collection_error: str | None
+    application_health: list[ApplicationHealthMetricResponse]
+
+class LatestMetricsResponse(FlexibleModel):
+    machine_id: str
+    metrics: MetricSnapshotResponse | None
+
+class MetricHistoryResponse(FlexibleModel):
+    machine_id: str
+    items: list[MetricSnapshotResponse]
+    total: int
+    limit: int
+    offset: int
+
+class LatestContainerResponse(DatabaseReadModel):
+    machine_id: str | None
+    host_metric_id: int
+    sampled_at: datetime
+    id: int
+    container_id: str | None
+    name: str | None
+    image: str | None
+    status: str | None
+    cpu_usage_percent: float | None
+    memory_usage_bytes: int | None
+    memory_limit_bytes: int | None
+    network_received_bytes: int | None
+    network_transmitted_bytes: int | None
+    block_read_bytes: int | None
+    block_write_bytes: int | None
+    restart_count: int | None
+    uptime_seconds: float | None
+    exit_code: int | None
+    health_status: str | None
+    collection_errors: list[str]
+
+class LatestContainerListResponse(FlexibleModel):
+    items: list[LatestContainerResponse]
+    total: int
+    limit: int
+    offset: int
+
+class ApplicationHealthResponse(FlexibleModel):
+    machine_id: str
+    sampled_at: datetime | None
+    collection_error: str | None
+    items: list[ApplicationHealthMetricResponse]

@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
+from app.api.readings import router as readings_router
 from app.db import close_database, initialize_database
 from app.logging_config import configure_logging
 
@@ -20,6 +21,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Cloud Monitoring API", version="1.0.0", lifespan=lifespan)
 app.include_router(metrics_router)
+app.include_router(readings_router)
 app.include_router(health_router)
 
 @app.middleware("http")
