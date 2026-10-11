@@ -11,7 +11,11 @@ class StructuredFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for key in ("event", "method", "path", "status_code", "duration_ms", "collector_count"):
+        for key in (
+            "event", "method", "path", "status_code", "duration_ms",
+            "collector_count", "disk_mount_count", "container_count",
+            "application_endpoint_count", "host_metric_id",
+        ):
             value = getattr(record, key, None)
             if value is not None:
                 event[key] = value

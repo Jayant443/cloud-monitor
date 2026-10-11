@@ -1,15 +1,24 @@
 import logging
 import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
+from app.db import close_database, initialize_database
 from app.logging_config import configure_logging
 
 configure_logging()
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Cloud Monitoring API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await initialize_database()
+    yield
+    await close_database()
+
+app = FastAPI(title="Cloud Monitoring API", version="1.0.0", lifespan=lifespan)
 app.include_router(metrics_router)
 app.include_router(health_router)
 
