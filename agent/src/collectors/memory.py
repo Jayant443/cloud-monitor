@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
-
 import psutil
-
 
 def memory_usage() -> dict[str, str | float]:
     return {
