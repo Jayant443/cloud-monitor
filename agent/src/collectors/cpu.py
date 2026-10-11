@@ -1,7 +1,9 @@
 import psutil
+from datetime import datetime, timezone
 
 
-def print_cpu_usage() -> None:
-    for _ in range(20):
-        usage = psutil.cpu_percent(interval=1)
-        print(f"CPU usage: {usage:.1f}%")
+def cpu_usage() -> dict[str, str | float]:
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "cpu_usage": psutil.cpu_percent(interval=1),
+    }
