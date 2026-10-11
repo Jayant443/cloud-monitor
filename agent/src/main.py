@@ -12,20 +12,13 @@ def main() -> None:
         disk_reading = disk_usage()
         network_reading = network_usage()
         containers_reading = container_usage()
-        print(
-            f"CPU usage: {cpu_reading['cpu_usage']}% at "
-            f"{cpu_reading['timestamp']} | "
-            f"Memory usage: {memory_reading['memory_usage']}% at "
-            f"{memory_reading['timestamp']} | "
-            f"Disk usage: {disk_reading['disk_usage']}% "
-            f"({disk_reading['used_bytes']} bytes used, "
-            f"{disk_reading['free_bytes']} bytes free) at "
-            f"{disk_reading['timestamp']} | "
-            f"Network: {network_reading['bytes_sent']} bytes sent, "
-            f"{network_reading['bytes_received']} bytes received at "
-            f"{network_reading['timestamp']} | Containers: "
-            f"{json.dumps(containers_reading)}"
-        )
+        print(json.dumps({
+            "cpu": cpu_reading,
+            "memory": memory_reading,
+            "disk": disk_reading,
+            "network": network_reading,
+            "containers": containers_reading,
+        }))
 
 if __name__ == "__main__":
     main()
