@@ -140,10 +140,15 @@ async def list_latest_containers(machine_id: str | None = None, limit: int = Que
         ranked_query = (
             select(
                 ContainerMetric.id.label("container_metric_id"),
+                ContainerMetric.sampled_at.label("container_sampled_at"),
                 HostMetric.machine_id.label("machine_id"),
                 rank,
             )
-            .join(HostMetric, ContainerMetric.host_metric_id == HostMetric.id)
+            .join(
+                HostMetric,
+                (ContainerMetric.host_metric_id == HostMetric.id)
+                & (ContainerMetric.host_metric_collected_at == HostMetric.collected_at),
+            )
             .where(ContainerMetric.container_id.is_not(None))
         )
         if machine_id is not None:
@@ -156,8 +161,16 @@ async def list_latest_containers(machine_id: str | None = None, limit: int = Que
         ) or 0
         result = await db.execute(
             select(ContainerMetric, HostMetric.machine_id, HostMetric.collected_at)
-            .join(ranked, ranked.c.container_metric_id == ContainerMetric.id)
-            .join(HostMetric, ContainerMetric.host_metric_id == HostMetric.id)
+            .join(
+                ranked,
+                (ranked.c.container_metric_id == ContainerMetric.id)
+                & (ranked.c.container_sampled_at == ContainerMetric.sampled_at),
+            )
+            .join(
+                HostMetric,
+                (ContainerMetric.host_metric_id == HostMetric.id)
+                & (ContainerMetric.host_metric_collected_at == HostMetric.collected_at),
+            )
             .where(latest_filter)
             .order_by(
                 ContainerMetric.sampled_at.desc().nulls_last(),
@@ -210,7 +223,10 @@ async def get_latest_application_health(machine_id: str, db: AsyncSession = Depe
 
         result = await db.scalars(
             select(ApplicationHealthMetric)
-            .where(ApplicationHealthMetric.host_metric_id == latest.id)
+            .where(
+                ApplicationHealthMetric.host_metric_id == latest.id,
+                ApplicationHealthMetric.host_metric_collected_at == latest.collected_at,
+            )
             .order_by(ApplicationHealthMetric.sampled_at.desc().nulls_last(), ApplicationHealthMetric.id)
         )
         return ApplicationHealthResponse(

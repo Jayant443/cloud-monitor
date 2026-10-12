@@ -5,12 +5,15 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Identity,
+    Index,
     Integer,
     String,
     Text,
+    and_,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, foreign, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
@@ -32,12 +35,9 @@ class Host(Base):
 class HostMetric(Base):
     __tablename__ = "host_metrics"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    machine_id: Mapped[str | None] = mapped_column(
-        ForeignKey("hosts.machine_id", ondelete="SET NULL"), index=True
-    )
-    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("hosts.machine_id", ondelete="SET NULL"), index=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True, nullable=False, index=True)
     cpu_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cpu_usage: Mapped[float | None] = mapped_column(Float)
     cpu_collection_error: Mapped[str | None] = mapped_column(Text)
@@ -64,23 +64,39 @@ class HostMetric(Base):
 
     host: Mapped[Host | None] = relationship(back_populates="metrics")
     disks: Mapped[list["DiskMountMetric"]] = relationship(
-        back_populates="host_metric", cascade="all, delete-orphan"
+        back_populates="host_metric",
+        cascade="all, delete-orphan",
+        primaryjoin=lambda: and_(
+            HostMetric.id == foreign(DiskMountMetric.host_metric_id),
+            HostMetric.collected_at == foreign(DiskMountMetric.host_metric_collected_at),
+        ),
     )
     containers: Mapped[list["ContainerMetric"]] = relationship(
-        back_populates="host_metric", cascade="all, delete-orphan"
+        back_populates="host_metric",
+        cascade="all, delete-orphan",
+        primaryjoin=lambda: and_(
+            HostMetric.id == foreign(ContainerMetric.host_metric_id),
+            HostMetric.collected_at == foreign(ContainerMetric.host_metric_collected_at),
+        ),
     )
     application_health: Mapped[list["ApplicationHealthMetric"]] = relationship(
-        back_populates="host_metric", cascade="all, delete-orphan"
+        back_populates="host_metric",
+        cascade="all, delete-orphan",
+        primaryjoin=lambda: and_(
+            HostMetric.id == foreign(ApplicationHealthMetric.host_metric_id),
+            HostMetric.collected_at == foreign(ApplicationHealthMetric.host_metric_collected_at),
+        ),
     )
 
 class DiskMountMetric(Base):
     __tablename__ = "disk_mount_metrics"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    host_metric_id: Mapped[int] = mapped_column(
-        ForeignKey("host_metrics.id", ondelete="CASCADE"), nullable=False, index=True
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, nullable=False
     )
-    sampled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     mount_point: Mapped[str] = mapped_column(String(1024), nullable=False)
     usage_percent: Mapped[float | None] = mapped_column(Float)
     used_bytes: Mapped[int | None] = mapped_column(BigInteger)
@@ -88,16 +104,27 @@ class DiskMountMetric(Base):
     total_bytes: Mapped[int | None] = mapped_column(BigInteger)
     collection_error: Mapped[str | None] = mapped_column(Text)
 
-    host_metric: Mapped[HostMetric] = relationship(back_populates="disks")
+    __table_args__ = (
+        Index("ix_disk_mount_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+    )
+
+    host_metric: Mapped[HostMetric] = relationship(
+        back_populates="disks",
+        primaryjoin=lambda: and_(
+            foreign(DiskMountMetric.host_metric_id) == HostMetric.id,
+            foreign(DiskMountMetric.host_metric_collected_at) == HostMetric.collected_at,
+        ),
+    )
 
 class ContainerMetric(Base):
     __tablename__ = "container_metrics"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    host_metric_id: Mapped[int] = mapped_column(
-        ForeignKey("host_metrics.id", ondelete="CASCADE"), nullable=False, index=True
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, nullable=False
     )
-    sampled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     container_id: Mapped[str | None] = mapped_column(String(128), index=True)
     name: Mapped[str | None] = mapped_column(String(255))
     image: Mapped[str | None] = mapped_column(String(1024))
@@ -115,20 +142,41 @@ class ContainerMetric(Base):
     health_status: Mapped[str | None] = mapped_column(String(64))
     collection_errors: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
 
-    host_metric: Mapped[HostMetric] = relationship(back_populates="containers")
+    __table_args__ = (
+        Index("ix_container_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+    )
+
+    host_metric: Mapped[HostMetric] = relationship(
+        back_populates="containers",
+        primaryjoin=lambda: and_(
+            foreign(ContainerMetric.host_metric_id) == HostMetric.id,
+            foreign(ContainerMetric.host_metric_collected_at) == HostMetric.collected_at,
+        ),
+    )
 
 class ApplicationHealthMetric(Base):
     __tablename__ = "application_health_metrics"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    host_metric_id: Mapped[int] = mapped_column(
-        ForeignKey("host_metrics.id", ondelete="CASCADE"), nullable=False, index=True
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, nullable=False
     )
-    sampled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     endpoint_name: Mapped[str | None] = mapped_column(String(255), index=True)
     response_status: Mapped[int | None] = mapped_column(Integer)
     response_time_seconds: Mapped[float | None] = mapped_column(Float)
     available: Mapped[bool | None] = mapped_column(Boolean)
     error: Mapped[str | None] = mapped_column(Text)
 
-    host_metric: Mapped[HostMetric] = relationship(back_populates="application_health")
+    __table_args__ = (
+        Index("ix_application_health_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+    )
+
+    host_metric: Mapped[HostMetric] = relationship(
+        back_populates="application_health",
+        primaryjoin=lambda: and_(
+            foreign(ApplicationHealthMetric.host_metric_id) == HostMetric.id,
+            foreign(ApplicationHealthMetric.host_metric_collected_at) == HostMetric.collected_at,
+        ),
+    )
