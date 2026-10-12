@@ -1,9 +1,11 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
 from app.api.readings import router as readings_router
@@ -20,6 +22,21 @@ async def lifespan(_: FastAPI):
     await close_database()
 
 app = FastAPI(title="Cloud Monitoring API", version="1.0.0", lifespan=lifespan)
+cors_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type", "Authorization"],
+)
 app.include_router(metrics_router)
 app.include_router(readings_router)
 app.include_router(health_router)
