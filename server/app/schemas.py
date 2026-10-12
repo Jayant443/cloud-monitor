@@ -280,3 +280,10 @@ class ApplicationHealthResponse(FlexibleModel):
     sampled_at: datetime | None
     collection_error: str | None
     items: list[ApplicationHealthMetricResponse]
+
+class ApplicationHealthHistoryResponse(FlexibleModel):
+    machine_id: str
+    items: list[ApplicationHealthMetricResponse]
+    total: int
+    limit: int
+    offset: int

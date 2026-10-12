@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     and_,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, foreign, mapped_column, relationship
@@ -30,13 +32,80 @@ class Host(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
+    __table_args__ = (Index("ix_hosts_last_seen_at", "last_seen_at"),)
+
     metrics: Mapped[list["HostMetric"]] = relationship(back_populates="host")
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="host")
+
+
+class AlertRule(Base):
+    __tablename__ = "alert_rules"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    metric: Mapped[str] = mapped_column(String(128), nullable=False)
+    condition: Mapped[str] = mapped_column(String(24), nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    evaluation_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "evaluation_interval_seconds > 0",
+            name="ck_alert_rules_positive_evaluation_interval",
+        ),
+        Index("ix_alert_rules_enabled_metric", "enabled", "metric"),
+    )
+
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="rule")
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("alert_rules.id", ondelete="RESTRICT"), nullable=False
+    )
+    machine_id: Mapped[str] = mapped_column(
+        ForeignKey("hosts.machine_id", ondelete="RESTRICT"), nullable=False
+    )
+    observed_value: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_alerts_machine_triggered_at", "machine_id", "triggered_at"),
+        Index("ix_alerts_rule_triggered_at", "rule_id", "triggered_at"),
+        Index("ix_alerts_status_triggered_at", "status", "triggered_at"),
+    )
+
+    rule: Mapped[AlertRule] = relationship(back_populates="alerts")
+    host: Mapped[Host] = relationship(back_populates="alerts")
 
 class HostMetric(Base):
     __tablename__ = "host_metrics"
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    machine_id: Mapped[str | None] = mapped_column(ForeignKey("hosts.machine_id", ondelete="SET NULL"), index=True)
+    # Keep this nullable: the agent schema permits identity collection failures.
+    machine_id: Mapped[str | None] = mapped_column(
+        ForeignKey("hosts.machine_id", ondelete="SET NULL"), nullable=True
+    )
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True, nullable=False, index=True)
     cpu_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cpu_usage: Mapped[float | None] = mapped_column(Float)
@@ -61,6 +130,10 @@ class HostMetric(Base):
 
     container_collection_errors: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     application_health_collection_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_host_metrics_machine_time", "machine_id", "collected_at"),
+    )
 
     host: Mapped[Host | None] = relationship(back_populates="metrics")
     disks: Mapped[list["DiskMountMetric"]] = relationship(
@@ -105,7 +178,12 @@ class DiskMountMetric(Base):
     collection_error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        Index("ix_disk_mount_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+        Index(
+            "ix_disk_mount_metrics_host_metric_time",
+            "host_metric_id",
+            "host_metric_collected_at",
+            "sampled_at",
+        ),
     )
 
     host_metric: Mapped[HostMetric] = relationship(
@@ -125,7 +203,7 @@ class ContainerMetric(Base):
     )
     host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    container_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    container_id: Mapped[str | None] = mapped_column(String(128))
     name: Mapped[str | None] = mapped_column(String(255))
     image: Mapped[str | None] = mapped_column(String(1024))
     status: Mapped[str | None] = mapped_column(String(64))
@@ -143,7 +221,12 @@ class ContainerMetric(Base):
     collection_errors: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
 
     __table_args__ = (
-        Index("ix_container_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+        Index(
+            "ix_container_metrics_host_metric_time",
+            "host_metric_id",
+            "host_metric_collected_at",
+        ),
+        Index("ix_container_metrics_container_time", "container_id", "sampled_at"),
     )
 
     host_metric: Mapped[HostMetric] = relationship(
@@ -163,14 +246,20 @@ class ApplicationHealthMetric(Base):
     )
     host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    endpoint_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    endpoint_name: Mapped[str | None] = mapped_column(String(255))
     response_status: Mapped[int | None] = mapped_column(Integer)
     response_time_seconds: Mapped[float | None] = mapped_column(Float)
     available: Mapped[bool | None] = mapped_column(Boolean)
     error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        Index("ix_application_health_metrics_host_metric_ref", "host_metric_id", "host_metric_collected_at"),
+        Index(
+            "ix_application_health_metrics_host_metric_time",
+            "host_metric_id",
+            "host_metric_collected_at",
+            "sampled_at",
+        ),
+        Index("ix_application_health_metrics_endpoint_time", "endpoint_name", "sampled_at"),
     )
 
     host_metric: Mapped[HostMetric] = relationship(

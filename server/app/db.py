@@ -42,6 +42,99 @@ def _session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
     engine = _engine_for(database_url)
     return async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
+
+async def _refine_existing_schema(connection) -> None:
+    child_tables = (
+        "disk_mount_metrics",
+        "container_metrics",
+        "application_health_metrics",
+    )
+    for table_name in child_tables:
+        await connection.execute(
+            text(
+                f"ALTER TABLE {table_name} "
+                "ADD COLUMN IF NOT EXISTS host_metric_collected_at TIMESTAMPTZ"
+            )
+        )
+        await connection.execute(
+            text(
+                f"UPDATE {table_name} AS child "
+                "SET host_metric_collected_at = parent.collected_at "
+                "FROM (SELECT id, min(collected_at) AS collected_at "
+                "FROM host_metrics GROUP BY id HAVING count(*) = 1) AS parent "
+                "WHERE child.host_metric_id = parent.id "
+                "AND child.host_metric_collected_at IS NULL"
+            )
+        )
+        await connection.execute(
+            text(
+                f"UPDATE {table_name} AS child "
+                "SET sampled_at = child.host_metric_collected_at "
+                "WHERE child.sampled_at IS NULL "
+                "AND child.host_metric_collected_at IS NOT NULL"
+            )
+        )
+        missing_refs = await connection.scalar(
+            text(
+                f"SELECT count(*) FROM {table_name} AS child "
+                "LEFT JOIN host_metrics AS parent "
+                "ON parent.id = child.host_metric_id "
+                "AND parent.collected_at = child.host_metric_collected_at "
+                "WHERE child.host_metric_id IS NULL "
+                "OR child.host_metric_collected_at IS NULL "
+                "OR child.sampled_at IS NULL OR parent.id IS NULL"
+            )
+        )
+        if missing_refs:
+            raise RuntimeError(
+                f"Cannot safely require host/time references in {table_name}: "
+                f"{missing_refs} rows have missing or unmatched references/timestamps"
+            )
+        await connection.execute(
+            text(
+                f"ALTER TABLE {table_name} "
+                "ALTER COLUMN host_metric_id SET NOT NULL, "
+                "ALTER COLUMN host_metric_collected_at SET NOT NULL, "
+                "ALTER COLUMN sampled_at SET NOT NULL"
+            )
+        )
+
+    await connection.execute(
+        text("ALTER TABLE host_metrics ALTER COLUMN collected_at SET NOT NULL")
+    )
+
+    indexes = (
+        "CREATE INDEX IF NOT EXISTS ix_hosts_last_seen_at "
+        "ON hosts (last_seen_at)",
+        "CREATE INDEX IF NOT EXISTS ix_host_metrics_machine_time "
+        "ON host_metrics (machine_id, collected_at)",
+        "CREATE INDEX IF NOT EXISTS ix_disk_mount_metrics_host_metric_time "
+        "ON disk_mount_metrics (host_metric_id, host_metric_collected_at, sampled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_container_metrics_host_metric_time "
+        "ON container_metrics (host_metric_id, host_metric_collected_at)",
+        "CREATE INDEX IF NOT EXISTS ix_container_metrics_container_time "
+        "ON container_metrics (container_id, sampled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_application_health_metrics_host_metric_time "
+        "ON application_health_metrics "
+        "(host_metric_id, host_metric_collected_at, sampled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_application_health_metrics_endpoint_time "
+        "ON application_health_metrics (endpoint_name, sampled_at)",
+    )
+    for statement in indexes:
+        await connection.execute(text(statement))
+
+    obsolete_indexes = (
+        "ix_host_metrics_machine_id",
+        "ix_disk_mount_metrics_host_metric_id",
+        "ix_container_metrics_host_metric_id",
+        "ix_container_metrics_container_id",
+        "ix_application_health_metrics_host_metric_id",
+        "ix_application_health_metrics_endpoint_name",
+    )
+    for index_name in obsolete_indexes:
+        await connection.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+
+
 async def initialize_database() -> bool:
     database_url = _database_url_from_env()
     if not database_url:
@@ -55,6 +148,7 @@ async def initialize_database() -> bool:
         async with engine.begin() as connection:
             await connection.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
             await connection.run_sync(Base.metadata.create_all)
+            await _refine_existing_schema(connection)
             for table_name, time_column in (
                 ("host_metrics", "collected_at"),
                 ("disk_mount_metrics", "sampled_at"),
@@ -74,7 +168,7 @@ async def initialize_database() -> bool:
                 )
         logger.info("Database tables are ready", extra={"event": "database_initialized"})
         return True
-    except SQLAlchemyError:
+    except Exception:
         logger.exception("Could not initialize database tables", extra={"event": "database_initialization_failed"})
         return False
 

@@ -14,6 +14,7 @@ from app.models import (
 )
 from app.schemas import (
     ApplicationHealthMetricResponse,
+    ApplicationHealthHistoryResponse,
     ApplicationHealthResponse,
     LatestContainerListResponse,
     LatestContainerResponse,
@@ -237,6 +238,58 @@ async def get_latest_application_health(machine_id: str, db: AsyncSession = Depe
                 ApplicationHealthMetricResponse.model_validate(item)
                 for item in result.all()
             ],
+        )
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(exc) from exc
+
+
+@router.get("/machines/{machine_id}/application-health/history", response_model=ApplicationHealthHistoryResponse,)
+async def get_application_health_history(
+    machine_id: str,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> ApplicationHealthHistoryResponse:
+    _validate_time_range(start_time, end_time)
+    try:
+        await _require_machine(db, machine_id)
+        filters = [HostMetric.machine_id == machine_id]
+        if start_time is not None:
+            filters.append(ApplicationHealthMetric.sampled_at >= start_time)
+        if end_time is not None:
+            filters.append(ApplicationHealthMetric.sampled_at <= end_time)
+        join_condition = (
+            (ApplicationHealthMetric.host_metric_id == HostMetric.id)
+            & (ApplicationHealthMetric.host_metric_collected_at == HostMetric.collected_at)
+        )
+        total = await db.scalar(
+            select(func.count())
+            .select_from(ApplicationHealthMetric)
+            .join(HostMetric, join_condition)
+            .where(*filters)
+        ) or 0
+        result = await db.scalars(
+            select(ApplicationHealthMetric)
+            .join(HostMetric, join_condition)
+            .where(*filters)
+            .order_by(
+                ApplicationHealthMetric.sampled_at.desc(),
+                ApplicationHealthMetric.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        return ApplicationHealthHistoryResponse(
+            machine_id=machine_id,
+            items=[
+                ApplicationHealthMetricResponse.model_validate(item)
+                for item in result.all()
+            ],
+            total=total,
+            limit=limit,
+            offset=offset,
         )
     except SQLAlchemyError as exc:
         raise _database_unavailable(exc) from exc
