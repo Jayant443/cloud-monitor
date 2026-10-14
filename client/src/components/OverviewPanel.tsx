@@ -2,14 +2,16 @@ import { diskAverage, formatRelative, isOnline, percent } from '../lib/format'
 import type { HostSnapshots } from '../lib/api'
 import type { Machine, Snapshot } from '../types/metrics'
 import { EmptyInline, Icon, MetricInline } from './DashboardUI'
+import { HostResourceCard } from './HostResourceCard'
 
-export function OverviewPanel({ machines, snapshots, selected, latest, onChooseHost, onOpenDetails }: {
+export function OverviewPanel({ machines, snapshots, resourceHost, resourceSnap, onChooseHost, onOpenDetails, onOpenResource }: {
   machines: Machine[]
   snapshots: HostSnapshots
-  selected: Machine | null
-  latest: Snapshot | null
+  resourceHost: Machine | null
+  resourceSnap: Snapshot | null
   onChooseHost: (host: Machine) => void
   onOpenDetails: () => void
+  onOpenResource: () => void
 }) {
   return <>
     <section className="panel host-panel">
@@ -27,9 +29,9 @@ export function OverviewPanel({ machines, snapshots, selected, latest, onChooseH
         })}
       </tbody></table></div> : <EmptyInline text="No monitored hosts have been added yet." />}
     </section>
-    {selected && <section className="overview-lower">
-      <div className="panel selected-host-card"><div className="section-kicker">SELECTED HOST</div><div className="selected-host-title"><span className="host-avatar large"><Icon name="server" size={20} /></span><div><h3>{selected.hostname || selected.machine_id}</h3><p>{selected.machine_id}</p></div></div><div className="selected-meta"><span>{selected.operating_system || 'Unknown OS'}</span><span>{selected.architecture || 'Unknown architecture'}</span><span>Last seen {formatRelative(selected.last_seen_at)}</span></div><button className="primary-button" onClick={onOpenDetails}>Open host details <Icon name="arrow" size={16} /></button></div>
-      <div className="panel latest-panel"><div className="panel-title-row compact"><div><div className="section-kicker">LATEST SAMPLE</div><h3>Resource snapshot</h3></div><span className="sample-time">{latest?.collected_at ? formatRelative(latest.collected_at) : 'No data'}</span></div><div className="latest-metrics"><div><span>Disk use</span><strong>{percent(diskAverage(latest))}</strong></div><div><span>Containers</span><strong>{latest?.containers.length ?? 0}</strong></div><div><span>App checks</span><strong>{latest?.application_health.length ?? 0}</strong></div></div><div className="disk-bars">{latest?.disks.slice(0, 3).map((disk) => <div className="disk-line" key={`${disk.mount_point}-${disk.id}`}><div><span>{disk.mount_point}</span><strong>{percent(disk.usage_percent)}</strong></div><div className="progress-track"><span style={{ width: `${Math.min(disk.usage_percent ?? 0, 100)}%` }} /></div></div>)}</div></div>
+    {resourceHost && <section className="overview-lower">
+      <HostResourceCard host={resourceHost} snap={resourceSnap} kicker="LATEST HOST" actionLabel="Open host details" onAction={onOpenResource} />
+      <div className="panel latest-panel"><div className="panel-title-row compact"><div><div className="section-kicker">LATEST SAMPLE</div><h3>Resource snapshot</h3></div><span className="sample-time">{resourceSnap?.collected_at ? formatRelative(resourceSnap.collected_at) : 'No data'}</span></div><div className="latest-metrics"><div><span>Disk use</span><strong>{percent(diskAverage(resourceSnap))}</strong></div><div><span>Containers</span><strong>{resourceSnap?.containers.length ?? 0}</strong></div><div><span>App checks</span><strong>{resourceSnap?.application_health.length ?? 0}</strong></div></div><div className="disk-bars">{resourceSnap?.disks.slice(0, 3).map((disk) => <div className="disk-line" key={`${disk.mount_point}-${disk.id}`}><div><span>{disk.mount_point}</span><strong>{percent(disk.usage_percent)}</strong></div><div className="progress-track"><span style={{ width: `${Math.min(disk.usage_percent ?? 0, 100)}%` }} /></div></div>)}</div></div>
     </section>}
   </>
 }

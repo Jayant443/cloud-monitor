@@ -18,16 +18,17 @@ export function HostDetailPanel({ latest, history, containers, appHealth, appHis
     disk: history.map((sample) => diskAverage(sample)),
     network: history.map((sample) => networkRate(sample)),
   }
+  const timeLabels = history.map((sample) => dateLabel(sample.collected_at))
   const healthy = appHealth?.items.filter((check) => check.available === true).length ?? 0
   const appCount = appHealth?.items.length ?? 0
   return <>
     {error && <div className="notice error-notice detail-notice"><strong>Some host details could not be loaded.</strong><span>{error}</span></div>}
     {loading && <div className="detail-loading"><span className="spinner" />Loading host detail…</div>}
     <section className="chart-grid">
-      <ChartCard title="CPU utilization" detail="Host processor usage" values={series.cpu} color="#6e65e8" icon="activity" />
-      <ChartCard title="Memory usage" detail="Used memory percentage" values={series.memory} color="#20a88b" icon="pulse" />
-      <ChartCard title="Disk utilization" detail="Average across mounted filesystems" values={series.disk} color="#e49a42" icon="server" />
-      <ChartCard title="Network throughput" detail="Inbound + outbound" values={series.network} color="#4989dd" unit="bytes" icon="grid" />
+      <ChartCard title="CPU utilization" detail="Host processor usage" values={series.cpu} labels={timeLabels} color="#e8e8e8" icon="activity" />
+      <ChartCard title="Memory usage" detail="Used memory percentage" values={series.memory} labels={timeLabels} color="#20a88b" icon="pulse" />
+      <ChartCard title="Disk utilization" detail="Average across mounted filesystems" values={series.disk} labels={timeLabels} color="#e49a42" icon="server" />
+      <ChartCard title="Network throughput" detail="Inbound + outbound" values={series.network} labels={timeLabels} color="#4989dd" unit="bytes" icon="grid" />
     </section>
     <section className="detail-grid">
       <div className="panel detail-panel"><div className="panel-title-row"><div><div className="section-kicker">LATEST READINGS</div><h2>Disk filesystems</h2></div><span className="count-badge">{latest?.disks.length ?? 0}</span></div>

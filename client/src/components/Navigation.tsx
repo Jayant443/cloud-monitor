@@ -2,23 +2,25 @@ import { formatRelative, isOnline } from '../lib/format'
 import type { Machine } from '../types/metrics'
 import { Icon } from './DashboardUI'
 
-export type DashboardView = 'overview' | 'hosts'
+export type DashboardView = 'overview' | 'hosts' | 'alerts'
 
-export function Sidebar({ view, machines, selectedId, onlineCount, loading, onView, onSelectHost }: {
+export function Sidebar({ view, machines, selectedId, onlineCount, loading, alertCount, onView, onSelectHost }: {
   view: DashboardView
   machines: Machine[]
   selectedId: string
   onlineCount: number
   loading: boolean
+  alertCount: number
   onView: (view: DashboardView) => void
   onSelectHost: (host: Machine) => void
 }) {
   return <aside className="sidebar">
-    <button className="brand" onClick={() => onView('overview')}><span className="brand-mark"><Icon name="activity" size={21} /></span><span>Northstar<span className="brand-sub">OBSERVABILITY</span></span></button>
+    <button className="brand" onClick={() => onView('overview')}><span>TheMonitor</span></button>
     <div className="side-label">WORKSPACE</div>
     <nav className="side-nav" aria-label="Main navigation">
       <button className={view === 'overview' ? 'active' : ''} onClick={() => onView('overview')}><Icon name="grid" /> Overview</button>
       <button className={view === 'hosts' ? 'active' : ''} onClick={() => onView('hosts')}><Icon name="server" /> Hosts <span className="nav-count">{machines.length}</span></button>
+      <button className={view === 'alerts' ? 'active' : ''} onClick={() => onView('alerts')}><Icon name="pulse" /> Alerts {alertCount > 0 && <span className="nav-count">{alertCount}</span>}</button>
     </nav>
     <div className="side-label host-label">MONITORED HOSTS</div>
     <div className="sidebar-hosts">
