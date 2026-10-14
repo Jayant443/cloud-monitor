@@ -8,7 +8,7 @@ import { OverviewPanel } from './components/OverviewPanel'
 import { Sidebar, Topbar, type DashboardView } from './components/Navigation'
 import { useDashboardData } from './hooks/useDashboardData'
 import { API_BASE_URL, alertsApi, monitoringApi } from './lib/api'
-import { isOnline } from './lib/format'
+import { formatRelative, hostStatus, isOnline } from './lib/format'
 import type { AlertItem, AlertRule, AlertSummary } from './types/alerts'
 import type { AppCheck, AppHealth, Container, Period, Snapshot } from './types/metrics'
 
@@ -133,7 +133,11 @@ function App() {
       <div className="page-wrap">
         <div className="page-heading">
           <div><div className="eyebrow">{heading.eyebrow}</div><h1>{heading.title}</h1><p>{heading.sub}</p></div>
-          <div className="heading-tools">{view === 'hosts' && selected && <span className={`host-state ${isOnline(selected) ? 'state-online' : 'state-offline'}`}><span className="status-dot" />{isOnline(selected) ? 'Online' : 'Offline'}</span>}{view !== 'alerts' && <label className="period-select"><span className="sr-only">History period</span><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label>}</div>
+          <div className="heading-tools">{view === 'hosts' && selected && (() => {
+            const status = hostStatus(selected)
+            const label = status === 'online' ? 'Online' : status === 'stale' ? 'Stale' : 'Offline'
+            return <span className={`host-state state-${status}`} title={`Last seen ${formatRelative(selected.last_seen_at)}`}><span className="status-dot" />{label} · {formatRelative(selected.last_seen_at)}</span>
+          })()}{view !== 'alerts' && <label className="period-select"><span className="sr-only">History period</span><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label>}</div>
         </div>
 
         {error && <div className="notice error-notice"><strong>Couldn’t reach the monitoring API.</strong><span>{error}</span><button onClick={handleRefreshAll}>Try again</button><small>API: {API_BASE_URL}</small></div>}
@@ -142,7 +146,7 @@ function App() {
 
         {view === 'alerts'
           ? <><AlertsPanel summary={alertSummary} active={activeAlerts} acknowledged={ackedAlerts} history={alertHistory} rules={alertRules} loading={alertsLoading} error={alertsError} onChanged={() => { void refreshAlerts() }} />
-            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online if seen within 2 minutes</span></footer></>
+            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;30s · Stale &lt;2m · Offline after 2m</span></footer></>
           : machines.length > 0 && <>
           {view === 'overview' && <section className="stat-grid" aria-label="Infrastructure summary">
             <StatCard label="Monitored hosts" value={`${onlineCount} / ${machines.length}`} note={`${machines.length - onlineCount} offline`} icon="server" tone="violet" />
@@ -153,7 +157,7 @@ function App() {
             <div style={{ height: 14 }} />
             <HostDetailPanel latest={latest} history={history} containers={containers} appHealth={appHealth} appHistory={appHistory} loading={detailLoading} error={detailError} period={period} />
           </>}
-          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online if seen within 2 minutes</span></footer>
+          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;30s · Stale &lt;2m · Offline after 2m</span></footer>
         </>}
       </div>
     </main>

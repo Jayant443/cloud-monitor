@@ -17,6 +17,7 @@
 .status-dot { display: inline-block; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #a9b0bb; }
 .status-dot.online, .online-pill .status-dot, .host-state.state-online .status-dot, .container-status.running .status-dot { background: #38bf8b; box-shadow: 0 0 0 3px #38bf8b20; }
 .status-dot.offline, .offline-pill .status-dot, .host-state.state-offline .status-dot { background: #ef7181; box-shadow: 0 0 0 3px #ef718120; }
+.status-dot.stale { background: #e8b23f; box-shadow: 0 0 0 3px #e8b23f20; }
 .side-empty { padding: 7px 11px; color: #777f96; font-size: 12px; }
 .sidebar-bottom { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 13px 11px; border: 1px solid #333; border-radius: 9px; background: #0a0a0a; }
 .live-indicator { display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #42c795; box-shadow: 0 0 0 3px #42c79520; }
@@ -45,6 +46,7 @@
 .host-state { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 .host-state.state-online { color: #5fe3a5; background: #123a2c; }
 .host-state.state-offline { color: #f08ba0; background: #42202c; }
+.host-state.state-stale { color: #f0b46a; background: #4d3418; }
 .stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 17px; }
 .stat-card { position: relative; display: grid; min-height: 133px; grid-template-columns: 37px 1fr; grid-template-rows: auto auto auto 1fr; column-gap: 12px; align-content: start; padding: 19px 17px 15px; border: 1px solid #3d3d3d; border-radius: 10px; background: #000; }
 .stat-icon { display: grid; width: 35px; height: 35px; grid-row: 1 / span 2; place-items: center; border-radius: 9px; }
@@ -75,7 +77,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .host-cell strong, .container-name strong { max-width: 190px; overflow: hidden; color: #f5f5f5; font-size: 12px; font-weight: 600; text-overflow: ellipsis; }
 .host-cell small, .container-name small { max-width: 190px; margin-top: 4px; overflow: hidden; color: #8d96aa; font-size: 10px; text-overflow: ellipsis; }
 .status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
-.online-pill { color: #5fe3a5; background: #123a2c; }.offline-pill { color: #f08ba0; background: #42202c; }
+.online-pill { color: #5fe3a5; background: #123a2c; }.offline-pill { color: #f08ba0; background: #42202c; }.stale-pill { color: #f0b46a; background: #4d3418; }
 .os-name { color: #aeb7ca; }
 .muted-cell { color: #8d96aa; }
 .metric-inline { display: flex; align-items: center; gap: 8px; }

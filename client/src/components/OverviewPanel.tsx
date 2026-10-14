@@ -1,4 +1,4 @@
-import { diskAverage, formatRelative, isOnline, percent } from '../lib/format'
+import { diskAverage, formatRelative, hostStatus, percent, type HostStatus } from '../lib/format'
 import type { HostSnapshots } from '../lib/api'
 import type { Machine, Snapshot } from '../types/metrics'
 import { EmptyInline, Icon, MetricInline } from './DashboardUI'
@@ -19,9 +19,11 @@ export function OverviewPanel({ machines, snapshots, resourceHost, resourceSnap,
       {machines.length ? <div className="table-scroll"><table><thead><tr><th>HOST</th><th>STATUS</th><th>OPERATING SYSTEM</th><th>CPU</th><th>MEMORY</th><th>LAST SEEN</th><th /></tr></thead><tbody>
         {machines.map((host) => {
           const snapshot = snapshots[host.machine_id]
+          const status: HostStatus = hostStatus(host)
+          const statusLabel = status === 'online' ? 'Online' : status === 'stale' ? 'Stale' : 'Offline'
           return <tr key={host.machine_id} className="host-row" onClick={() => onChooseHost(host)} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') onChooseHost(host) }}>
             <td><div className="host-cell"><span className="host-avatar"><Icon name="server" size={17} /></span><span><strong>{host.hostname || host.machine_id.slice(0, 16)}</strong><small>{host.machine_id}</small></span></div></td>
-            <td><span className={`status-pill ${isOnline(host) ? 'online-pill' : 'offline-pill'}`}><span className="status-dot" />{isOnline(host) ? 'Online' : 'Offline'}</span></td>
+            <td><span className={`status-pill ${status}-pill`}><span className="status-dot" />{statusLabel}</span></td>
             <td><span className="os-name">{host.operating_system || 'Unknown'}{host.os_version ? ` ${host.os_version}` : ''}</span></td>
             <td><MetricInline value={snapshot?.cpu_usage ?? null} /></td><td><MetricInline value={snapshot?.memory_usage ?? null} /></td>
             <td className="muted-cell">{formatRelative(host.last_seen_at)}</td><td><Icon name="chevron" size={16} /></td>

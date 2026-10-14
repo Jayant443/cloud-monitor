@@ -1,9 +1,19 @@
 import type { Machine, Snapshot } from '../types/metrics'
 
-export const ONLINE_WINDOW_MS = 2 * 60 * 1000
+export const ONLINE_WINDOW_MS = 30 * 1000
+export const STALE_WINDOW_MS = 2 * 60 * 1000
+
+export type HostStatus = 'online' | 'stale' | 'offline'
+
+export function hostStatus(host: Machine): HostStatus {
+  const ageMs = Date.now() - new Date(host.last_seen_at).getTime()
+  if (ageMs < ONLINE_WINDOW_MS) return 'online'
+  if (ageMs < STALE_WINDOW_MS) return 'stale'
+  return 'offline'
+}
 
 export function isOnline(host: Machine) {
-  return Date.now() - new Date(host.last_seen_at).getTime() < ONLINE_WINDOW_MS
+  return hostStatus(host) !== 'offline'
 }
 
 export function formatRelative(value: string | null | undefined) {

@@ -1,4 +1,4 @@
-import { formatRelative, isOnline } from '../lib/format'
+import { formatRelative, hostStatus } from '../lib/format'
 import type { Machine } from '../types/metrics'
 import { Icon } from './DashboardUI'
 
@@ -24,7 +24,7 @@ export function Sidebar({ view, machines, selectedId, onlineCount, loading, aler
     </nav>
     <div className="side-label host-label">MONITORED HOSTS</div>
     <div className="sidebar-hosts">
-      {machines.slice(0, 6).map((host) => <button key={host.machine_id} className={`sidebar-host ${host.machine_id === selectedId ? 'selected' : ''}`} onClick={() => onSelectHost(host)}><span className={`status-dot ${isOnline(host) ? 'online' : 'offline'}`} /><span className="sidebar-host-name">{host.hostname || host.machine_id.slice(0, 12)}</span></button>)}
+      {machines.slice(0, 6).map((host) => <button key={host.machine_id} className={`sidebar-host ${host.machine_id === selectedId ? 'selected' : ''}`} onClick={() => onSelectHost(host)}><span className={`status-dot ${hostStatus(host)}`} /><span className="sidebar-host-name">{host.hostname || host.machine_id.slice(0, 12)}</span></button>)}
       {!loading && machines.length === 0 && <div className="side-empty">No hosts yet</div>}
     </div>
     <div className="sidebar-bottom"><span className="live-indicator" /><div><strong>Agent network</strong><small>{onlineCount} of {machines.length} hosts online</small></div></div>
