@@ -15,6 +15,7 @@ class StructuredFormatter(logging.Formatter):
             "event", "method", "path", "status_code", "duration_ms",
             "collector_count", "disk_mount_count", "container_count",
             "application_endpoint_count", "process_count", "host_metric_id",
+            "rule_id", "fired", "resolved", "sustained", "ok",
         ):
             value = getattr(record, key, None)
             if value is not None:

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     and_,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, foreign, mapped_column, relationship
@@ -51,6 +52,10 @@ class AlertRule(Base):
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    consecutive_breaches_required: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -65,6 +70,10 @@ class AlertRule(Base):
         CheckConstraint(
             "evaluation_interval_seconds > 0",
             name="ck_alert_rules_positive_evaluation_interval",
+        ),
+        CheckConstraint(
+            "consecutive_breaches_required >= 1",
+            name="ck_alert_rules_positive_consecutive_breaches",
         ),
         Index("ix_alert_rules_enabled_metric", "enabled", "metric"),
     )
@@ -82,6 +91,12 @@ class Alert(Base):
     machine_id: Mapped[str] = mapped_column(
         ForeignKey("hosts.machine_id", ondelete="RESTRICT"), nullable=False
     )
+    resource_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="host", server_default="host"
+    )
+    resource_key: Mapped[str] = mapped_column(
+        String(1024), nullable=False, default="", server_default=""
+    )
     observed_value: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     triggered_at: Mapped[datetime] = mapped_column(
@@ -90,13 +105,48 @@ class Alert(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'acknowledged', 'resolved')",
+            name="ck_alerts_valid_status",
+        ),
         Index("ix_alerts_machine_triggered_at", "machine_id", "triggered_at"),
         Index("ix_alerts_rule_triggered_at", "rule_id", "triggered_at"),
         Index("ix_alerts_status_triggered_at", "status", "triggered_at"),
+        Index(
+            "uq_alerts_active_rule_machine_resource",
+            "rule_id",
+            "machine_id",
+            "resource_key",
+            unique=True,
+            postgresql_where=text("status IN ('active', 'acknowledged')"),
+        ),
     )
 
     rule: Mapped[AlertRule] = relationship(back_populates="alerts")
     host: Mapped[Host] = relationship(back_populates="alerts")
+
+
+class AlertEvaluationState(Base):
+    """Per (rule, machine, resource) consecutive-breach counter.
+
+    Persisted so transient过滤 survives restarts and works
+    across multiple backend instances (combined with advisory locks).
+    """
+
+    __tablename__ = "alert_evaluation_state"
+
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("alert_rules.id", ondelete="CASCADE"), primary_key=True
+    )
+    machine_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    resource_key: Mapped[str] = mapped_column(String(1024), primary_key=True, default="")
+    consecutive_breaches: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_observed_value: Mapped[float | None] = mapped_column(Float)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_alert_eval_state_rule", "rule_id"),)
 
 class HostMetric(Base):
     __tablename__ = "host_metrics"

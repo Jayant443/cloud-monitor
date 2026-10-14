@@ -134,6 +134,80 @@ async def _refine_existing_schema(connection) -> None:
     for index_name in obsolete_indexes:
         await connection.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
 
+    await _refine_alert_schema(connection)
+
+
+async def _refine_alert_schema(connection) -> None:
+    """Bring pre-existing alert tables up to date without full migrations."""
+    await connection.execute(
+        text(
+            "ALTER TABLE alert_rules "
+            "ADD COLUMN IF NOT EXISTS consecutive_breaches_required INTEGER "
+            "NOT NULL DEFAULT 1"
+        )
+    )
+    await connection.execute(
+        text(
+            "ALTER TABLE alert_rules "
+            "ADD COLUMN IF NOT EXISTS last_evaluated_at TIMESTAMPTZ"
+        )
+    )
+    await connection.execute(
+        text(
+            "ALTER TABLE alerts "
+            "ADD COLUMN IF NOT EXISTS resource_type VARCHAR(32) "
+            "NOT NULL DEFAULT 'host'"
+        )
+    )
+    await connection.execute(
+        text(
+            "ALTER TABLE alerts "
+            "ADD COLUMN IF NOT EXISTS resource_key VARCHAR(1024) "
+            "NOT NULL DEFAULT ''"
+        )
+    )
+    await connection.execute(
+        text("UPDATE alerts SET resource_type = 'host' WHERE resource_type IS NULL")
+    )
+    await connection.execute(
+        text("UPDATE alerts SET resource_key = '' WHERE resource_key IS NULL")
+    )
+    await connection.execute(
+        text(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_constraint "
+            "WHERE conname = 'ck_alerts_valid_status') THEN "
+            "ALTER TABLE alerts ADD CONSTRAINT ck_alerts_valid_status "
+            "CHECK (status IN ('active', 'acknowledged', 'resolved')); "
+            "END IF; END $$"
+        )
+    )
+    # Deduplicate legacy rows before enforcing the partial unique index.
+    await connection.execute(
+        text(
+            "DELETE FROM alerts a USING alerts b "
+            "WHERE a.id < b.id "
+            "AND a.rule_id = b.rule_id "
+            "AND a.machine_id = b.machine_id "
+            "AND COALESCE(a.resource_key, '') = COALESCE(b.resource_key, '') "
+            "AND a.status IN ('active', 'acknowledged') "
+            "AND b.status IN ('active', 'acknowledged')"
+        )
+    )
+    await connection.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_alerts_active_rule_machine_resource "
+            "ON alerts (rule_id, machine_id, resource_key) "
+            "WHERE status IN ('active', 'acknowledged')"
+        )
+    )
+    await connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_alert_eval_state_rule "
+            "ON alert_evaluation_state (rule_id)"
+        )
+    )
+
 
 async def initialize_database() -> bool:
     database_url = _database_url_from_env()

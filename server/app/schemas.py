@@ -303,3 +303,95 @@ class ApplicationHealthHistoryResponse(FlexibleModel):
     total: int
     limit: int
     offset: int
+
+# ---- Alerting ----
+
+SUPPORTED_ALERT_METRICS = (
+    "cpu_usage",
+    "memory_usage",
+    "disk_usage",
+    "host_inactivity_seconds",
+    "container_stopped",
+    "app_health_failed",
+)
+SUPPORTED_ALERT_CONDITIONS = ("gt", "gte", "lt", "lte")
+SUPPORTED_ALERT_SEVERITIES = ("critical", "warning", "info")
+SUPPORTED_ALERT_STATUSES = ("active", "acknowledged", "resolved")
+
+class AlertRuleCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    metric: str = Field(pattern="^(cpu_usage|memory_usage|disk_usage|host_inactivity_seconds|container_stopped|app_health_failed)$")
+    condition: str = Field(default="gte", pattern="^(gt|gte|lt|lte)$")
+    threshold: float = Field(ge=0)
+    evaluation_interval_seconds: int = Field(default=60, ge=10, le=86400)
+    severity: str = Field(default="warning", pattern="^(critical|warning|info)$")
+    enabled: bool = True
+    consecutive_breaches_required: int = Field(default=1, ge=1, le=20)
+
+    @field_validator("threshold")
+    @classmethod
+    def threshold_range_for_percent_metrics(cls, value: float, info) -> float:
+        metric = (info.data or {}).get("metric")
+        if metric in {"cpu_usage", "memory_usage", "disk_usage"} and not 0 <= value <= 100:
+            raise ValueError("threshold must be between 0 and 100 for usage metrics")
+        return value
+
+class AlertRuleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    metric: str | None = Field(default=None, pattern="^(cpu_usage|memory_usage|disk_usage|host_inactivity_seconds|container_stopped|app_health_failed)$")
+    condition: str | None = Field(default=None, pattern="^(gt|gte|lt|lte)$")
+    threshold: float | None = Field(default=None, ge=0)
+    evaluation_interval_seconds: int | None = Field(default=None, ge=10, le=86400)
+    severity: str | None = Field(default=None, pattern="^(critical|warning|info)$")
+    enabled: bool | None = None
+    consecutive_breaches_required: int | None = Field(default=None, ge=1, le=20)
+
+class AlertRuleResponse(DatabaseReadModel):
+    id: int
+    name: str
+    metric: str
+    condition: str
+    threshold: float
+    evaluation_interval_seconds: int
+    severity: str
+    enabled: bool
+    consecutive_breaches_required: int
+    last_evaluated_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    active_alert_count: int = 0
+
+class AlertRuleListResponse(FlexibleModel):
+    items: list[AlertRuleResponse]
+    total: int
+    limit: int
+    offset: int
+
+class AlertResponse(DatabaseReadModel):
+    id: int
+    rule_id: int
+    machine_id: str
+    resource_type: str
+    resource_key: str
+    observed_value: float
+    status: str
+    triggered_at: datetime
+    resolved_at: datetime | None
+    rule_name: str | None = None
+    rule_metric: str | None = None
+    rule_severity: str | None = None
+
+class AlertListResponse(FlexibleModel):
+    items: list[AlertResponse]
+    total: int
+    limit: int
+    offset: int
+
+class AlertSummaryResponse(FlexibleModel):
+    active: int
+    acknowledged: int
+    critical_active: int

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -6,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
+from app.api.alerts import router as alerts_router
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
 from app.api.readings import router as readings_router
@@ -18,8 +20,24 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await initialize_database()
-    yield
-    await close_database()
+    evaluator_task: asyncio.Task | None = None
+    try:
+        from app.services.alert_evaluator import _enabled, alert_evaluator_loop
+
+        if _enabled():
+            evaluator_task = asyncio.create_task(alert_evaluator_loop())
+    except Exception:
+        logger.exception("could not start alert evaluator", extra={"event": "alert_evaluator_start_failed"})
+    try:
+        yield
+    finally:
+        if evaluator_task is not None:
+            evaluator_task.cancel()
+            try:
+                await evaluator_task
+            except asyncio.CancelledError:
+                pass
+        await close_database()
 
 app = FastAPI(title="Cloud Monitoring API", version="1.0.0", lifespan=lifespan)
 cors_origins = [
@@ -34,11 +52,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Accept", "Content-Type", "Authorization"],
 )
 app.include_router(metrics_router)
 app.include_router(readings_router)
+app.include_router(alerts_router)
 app.include_router(health_router)
 
 @app.middleware("http")
