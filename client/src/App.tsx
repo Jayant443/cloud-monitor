@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { Icon, StatCard } from './components/DashboardUI'
 import { HostDetailPanel } from './components/HostDetailPanel'
@@ -20,6 +20,7 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [view, setView] = useState<DashboardView>('overview')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!machines.length) { setSelectedId(''); return }
@@ -27,15 +28,19 @@ function App() {
   }, [machines, selectedId])
 
   useEffect(() => {
+    setHistory([])
+    setContainers([])
+    setAppHealth(null)
+    setAppHistory([])
+    setDetailError('')
+  }, [selectedId, period])
+
+  useEffect(() => {
     if (!selectedId) return
     const controller = new AbortController()
     const hours = period === '1h' ? 1 : period === '24h' ? 24 : 168
     const start = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
     const query = `?start_time=${encodeURIComponent(start)}&limit=100&offset=0`
-    setHistory([])
-    setContainers([])
-    setAppHealth(null)
-    setAppHistory([])
     setDetailLoading(true)
     setDetailError('')
     Promise.all([
@@ -52,7 +57,17 @@ function App() {
       if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : 'Could not load host details')
     }).finally(() => { if (!controller.signal.aborted) setDetailLoading(false) })
     return () => controller.abort()
-  }, [selectedId, period])
+  }, [selectedId, period, refreshKey])
+
+  const handleRefreshAll = useCallback(() => {
+    void refresh()
+    setRefreshKey((key) => key + 1)
+  }, [refresh])
+
+  useEffect(() => {
+    const timer = window.setInterval(handleRefreshAll, 120_000)
+    return () => { window.clearInterval(timer) }
+  }, [handleRefreshAll])
 
   const selected = machines.find((host) => host.machine_id === selectedId) ?? null
   const latest = selectedId ? snapshots[selectedId] ?? null : null
@@ -75,14 +90,14 @@ function App() {
   return <div className="app-shell">
     <Sidebar view={view} machines={machines} selectedId={selectedId} onlineCount={onlineCount} loading={loading} onView={setView} onSelectHost={selectHost} />
     <main className="main-content">
-      <Topbar view={view} title={selected?.hostname || 'Host details'} lastUpdated={lastUpdated} onRefresh={() => { void refresh() }} />
+      <Topbar view={view} title={selected?.hostname || 'Host details'} lastUpdated={lastUpdated} onRefresh={handleRefreshAll} />
       <div className="page-wrap">
         <div className="page-heading">
           <div><div className="eyebrow">MONITORING / {view === 'overview' ? 'SYSTEM OVERVIEW' : 'HOST DETAILS'}</div><h1>{view === 'overview' ? 'System overview' : (selected?.hostname || 'Host overview')}</h1><p>{view === 'overview' ? 'A real-time view of your infrastructure health.' : `${selected?.operating_system ?? 'Host'}${selected?.os_version ? ` · ${selected.os_version}` : ''}${selected?.architecture ? ` · ${selected.architecture}` : ''}`}</p></div>
           <div className="heading-tools">{view === 'hosts' && selected && <span className={`host-state ${isOnline(selected) ? 'state-online' : 'state-offline'}`}><span className="status-dot" />{isOnline(selected) ? 'Online' : 'Offline'}</span>}<label className="period-select"><span className="sr-only">History period</span><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label></div>
         </div>
 
-        {error && <div className="notice error-notice"><strong>Couldn’t reach the monitoring API.</strong><span>{error}</span><button onClick={() => { void refresh() }}>Try again</button><small>API: {API_BASE_URL}</small></div>}
+        {error && <div className="notice error-notice"><strong>Couldn’t reach the monitoring API.</strong><span>{error}</span><button onClick={handleRefreshAll}>Try again</button><small>API: {API_BASE_URL}</small></div>}
         {loading && machines.length === 0 && !error && <div className="loading-panel"><span className="spinner" />Connecting to your monitoring server…</div>}
         {!loading && machines.length === 0 && !error && <div className="empty-panel"><div className="empty-icon"><Icon name="server" size={25} /></div><h2>No monitored hosts yet</h2><p>Once an agent sends its first metrics payload, the host will appear here.</p><span>Waiting for agent data</span></div>}
 
@@ -96,7 +111,7 @@ function App() {
           </section>
 
           {view === 'overview' ? <OverviewPanel machines={machines} snapshots={snapshots} selected={selected} latest={latest} onChooseHost={selectHost} onOpenDetails={() => setView('hosts')} /> : selected && <HostDetailPanel latest={latest} history={history} containers={containers} appHealth={appHealth} appHistory={appHistory} loading={detailLoading} error={detailError} period={period} />}
-          <footer className="page-footer"><span>Northstar Monitoring</span><span>Data refreshes every 30 seconds · Online if seen within 2 minutes</span></footer>
+          <footer className="page-footer"><span>Northstar Monitoring</span><span>Data refreshes every 2 minutes · Online if seen within 2 minutes</span></footer>
         </>}
       </div>
     </main>

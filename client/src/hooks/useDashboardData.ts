@@ -35,8 +35,7 @@ export function useDashboardData() {
   useEffect(() => {
     const controller = new AbortController()
     void refresh(controller.signal)
-    const timer = window.setInterval(() => void refresh(), 30_000)
-    return () => { controller.abort(); window.clearInterval(timer) }
+    return () => { controller.abort() }
   }, [refresh])
 
   return { machines, snapshots, loading, error, lastUpdated, refresh }
