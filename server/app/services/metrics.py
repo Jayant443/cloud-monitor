@@ -4,6 +4,7 @@ from app.models import (
     DiskMountMetric,
     Host,
     HostMetric,
+    ProcessMetric,
 )
 from app.schemas import MetricsPayload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,9 +50,15 @@ async def persist_metrics(session: AsyncSession, payload: MetricsPayload) -> Hos
         network_collection_error=payload.network.collection_error,
         container_collection_errors=payload.containers.collection_errors,
         application_health_collection_error=payload.application_health.collection_error,
+        process_timestamp=payload.processes.timestamp,
+        process_enabled=payload.processes.enabled,
+        process_collection_errors=payload.processes.collection_errors,
+        process_collection_error=payload.processes.collection_error,
+        agent_health=payload.agent_health.model_dump(mode="json"),
         disks=[],
         containers=[],
         application_health=[],
+        processes=[],
     )
     session.add(metric)
     await session.flush()
@@ -110,4 +117,17 @@ async def persist_metrics(session: AsyncSession, payload: MetricsPayload) -> Hos
                 error=payload.application_health.collection_error,
             )
         )
+    process_timestamp = payload.processes.timestamp or payload.timestamp
+    metric.processes.extend(
+        ProcessMetric(
+            sampled_at=process_timestamp,
+            pid=item.pid,
+            process_name=item.process_name,
+            cpu_percent=item.cpu_percent,
+            memory_usage_bytes=item.memory_usage_bytes,
+            status=item.status,
+            collection_error=item.collection_error,
+        )
+        for item in payload.processes.processes
+    )
     return metric

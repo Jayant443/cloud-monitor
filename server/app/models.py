@@ -131,6 +131,13 @@ class HostMetric(Base):
     container_collection_errors: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     application_health_collection_error: Mapped[str | None] = mapped_column(Text)
 
+    process_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    process_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    process_collection_errors: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    process_collection_error: Mapped[str | None] = mapped_column(Text)
+
+    agent_health: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (
         Index("ix_host_metrics_machine_time", "machine_id", "collected_at"),
     )
@@ -158,6 +165,14 @@ class HostMetric(Base):
         primaryjoin=lambda: and_(
             HostMetric.id == foreign(ApplicationHealthMetric.host_metric_id),
             HostMetric.collected_at == foreign(ApplicationHealthMetric.host_metric_collected_at),
+        ),
+    )
+    processes: Mapped[list["ProcessMetric"]] = relationship(
+        back_populates="host_metric",
+        cascade="all, delete-orphan",
+        primaryjoin=lambda: and_(
+            HostMetric.id == foreign(ProcessMetric.host_metric_id),
+            HostMetric.collected_at == foreign(ProcessMetric.host_metric_collected_at),
         ),
     )
 
@@ -267,5 +282,39 @@ class ApplicationHealthMetric(Base):
         primaryjoin=lambda: and_(
             foreign(ApplicationHealthMetric.host_metric_id) == HostMetric.id,
             foreign(ApplicationHealthMetric.host_metric_collected_at) == HostMetric.collected_at,
+        ),
+    )
+
+class ProcessMetric(Base):
+    __tablename__ = "process_metrics"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    sampled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, nullable=False
+    )
+    host_metric_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    host_metric_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    process_name: Mapped[str | None] = mapped_column(String(255))
+    cpu_percent: Mapped[float | None] = mapped_column(Float)
+    memory_usage_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    status: Mapped[str | None] = mapped_column(String(64))
+    collection_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index(
+            "ix_process_metrics_host_metric_time",
+            "host_metric_id",
+            "host_metric_collected_at",
+            "sampled_at",
+        ),
+        Index("ix_process_metrics_pid_time", "pid", "sampled_at"),
+    )
+
+    host_metric: Mapped[HostMetric] = relationship(
+        back_populates="processes",
+        primaryjoin=lambda: and_(
+            foreign(ProcessMetric.host_metric_id) == HostMetric.id,
+            foreign(ProcessMetric.host_metric_collected_at) == HostMetric.collected_at,
         ),
     )

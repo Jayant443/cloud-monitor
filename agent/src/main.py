@@ -1,7 +1,10 @@
+import argparse
 import json
 import logging
 import math
 import os
+import signal
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -87,7 +90,27 @@ def _configured_processes() -> tuple[bool, list[int], list[str]]:
             logger.warning("Ignoring invalid process PID setting: %s", value)
     return enabled, pids, _csv_setting("PROCESS_MONITOR_NAMES")
 
-def main() -> None:
+def _max_cycles_setting() -> int | None:
+    raw = os.getenv("MAX_CYCLES", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid MAX_CYCLES setting: %s", raw)
+        return None
+    return value if value > 0 else None
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Cloud monitoring agent")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Collect and send a single cycle, then exit (CI/smoke tests).",
+    )
+    args = parser.parse_args(argv)
+
     logging.basicConfig(
         level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -99,52 +122,74 @@ def main() -> None:
     backend_url = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
     backend_timeout = _float_setting("BACKEND_TIMEOUT_SECONDS", 5)
     mount_points = _csv_setting("DISK_MOUNT_POINTS") or ["/"]
+    max_cycles = 1 if args.once else _max_cycles_setting()
 
-    for _ in range(100):
+    shutdown = threading.Event()
+
+    def _handle_shutdown(signum: int, _frame: Any) -> None:
+        logger.info("Received signal %s, shutting down", signum)
+        shutdown.set()
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(signum, _handle_shutdown)
+        except (OSError, ValueError):
+            pass
+
+    cycles = 0
+    while not shutdown.is_set():
         cycle_started = time.monotonic()
-        cycle_timestamp = datetime.now(timezone.utc).isoformat()
-        cpu_reading = _collect(monitor, "cpu", cpu_usage, 0)
-        memory_reading = _collect(monitor, "memory", memory_usage)
-        disk_reading = _collect(monitor, "disk", disk_usage, mount_points)
-        network_reading = _collect(monitor, "network", network_usage)
-        containers_reading = _collect(monitor, "containers", container_usage)
-        host_reading = _collect(monitor, "host", host_identity)
-        application_reading = _collect(
-            monitor,
-            "application_health",
-            check_endpoints,
-            endpoints,
-            _float_setting("APP_HEALTH_TIMEOUT_SECONDS", 5),
-        )
-        process_reading = _collect(
-            monitor,
-            "processes",
-            process_usage,
-            process_enabled,
-            process_pids,
-            process_names,
-        )
-        payload = {
-            "timestamp": cycle_timestamp,
-            "cpu": cpu_reading,
-            "memory": memory_reading,
-            "disk": disk_reading,
-            "network": network_reading,
-            "containers": containers_reading,
-            "host": host_reading,
-            "application_health": application_reading,
-            "processes": process_reading,
-            "agent_health": monitor.report(),
-        }
-        json_payload = _json_compatible(payload)
-        print(json.dumps(json_payload, allow_nan=False))
-        send_metrics(json_payload, backend_url, backend_timeout)
+        try:
+            cycle_timestamp = datetime.now(timezone.utc).isoformat()
+            cpu_reading = _collect(monitor, "cpu", cpu_usage, 0)
+            memory_reading = _collect(monitor, "memory", memory_usage)
+            disk_reading = _collect(monitor, "disk", disk_usage, mount_points)
+            network_reading = _collect(monitor, "network", network_usage)
+            containers_reading = _collect(monitor, "containers", container_usage)
+            host_reading = _collect(monitor, "host", host_identity)
+            application_reading = _collect(
+                monitor,
+                "application_health",
+                check_endpoints,
+                endpoints,
+                _float_setting("APP_HEALTH_TIMEOUT_SECONDS", 5),
+            )
+            process_reading = _collect(
+                monitor,
+                "processes",
+                process_usage,
+                process_enabled,
+                process_pids,
+                process_names,
+            )
+            payload = {
+                "timestamp": cycle_timestamp,
+                "cpu": cpu_reading,
+                "memory": memory_reading,
+                "disk": disk_reading,
+                "network": network_reading,
+                "containers": containers_reading,
+                "host": host_reading,
+                "application_health": application_reading,
+                "processes": process_reading,
+                "agent_health": monitor.report(),
+            }
+            json_payload = _json_compatible(payload)
+            print(json.dumps(json_payload, allow_nan=False), flush=True)
+            send_metrics(json_payload, backend_url, backend_timeout)
+        except Exception:
+            logger.exception("Collection cycle failed, continuing")
 
-        remaining = collection_interval - (time.monotonic() - cycle_started)
+        cycles += 1
+        if max_cycles is not None and cycles >= max_cycles:
+            logger.info("Reached max cycles (%s), exiting", max_cycles)
+            break
+
+        elapsed = time.monotonic() - cycle_started
+        remaining = collection_interval - elapsed
         if remaining > 0:
-            time.sleep(remaining)
+            shutdown.wait(timeout=remaining)
         else:
-            elapsed = time.monotonic() - cycle_started
             logger.warning(
                 "Collection cycle took %.3fs, longer than the %.3fs interval",
                 elapsed,

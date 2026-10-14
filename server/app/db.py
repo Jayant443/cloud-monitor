@@ -154,6 +154,7 @@ async def initialize_database() -> bool:
                 ("disk_mount_metrics", "sampled_at"),
                 ("container_metrics", "sampled_at"),
                 ("application_health_metrics", "sampled_at"),
+                ("process_metrics", "sampled_at"),
             ):
                 await connection.execute(
                     text(

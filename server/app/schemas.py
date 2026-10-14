@@ -209,6 +209,16 @@ class ApplicationHealthMetricResponse(DatabaseReadModel):
     available: bool | None
     error: str | None
 
+class ProcessMetricResponse(DatabaseReadModel):
+    id: int
+    sampled_at: datetime | None
+    pid: int
+    process_name: str | None
+    cpu_percent: float | None
+    memory_usage_bytes: int | None
+    status: str | None
+    collection_error: str | None
+
 class MetricSnapshotResponse(DatabaseReadModel):
     id: int
     machine_id: str | None
@@ -235,6 +245,12 @@ class MetricSnapshotResponse(DatabaseReadModel):
     containers: list[ContainerMetricResponse]
     application_health_collection_error: str | None
     application_health: list[ApplicationHealthMetricResponse]
+    process_timestamp: datetime | None = None
+    process_enabled: bool = False
+    process_collection_errors: list[str] = Field(default_factory=list)
+    process_collection_error: str | None = None
+    agent_health: dict | None = None
+    processes: list[ProcessMetricResponse] = Field(default_factory=list)
 
 class LatestMetricsResponse(FlexibleModel):
     machine_id: str

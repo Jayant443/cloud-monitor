@@ -30,6 +30,7 @@ async def receive_metrics(payload: MetricsPayload, db: AsyncSession = Depends(ge
         "disk_mount_count": len(payload.disk.mounts),
         "container_count": len(payload.containers.containers),
         "application_endpoint_count": len(payload.application_health.endpoints),
+        "process_count": len(payload.processes.processes),
         "host_metric_id": metric.id,
     })
     return MetricsAccepted()

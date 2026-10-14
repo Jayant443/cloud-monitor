@@ -55,6 +55,27 @@ export type AppCheck = {
   error: string | null
 }
 
+export type MonitoredProcess = {
+  id: number
+  sampled_at: string | null
+  pid: number
+  process_name: string | null
+  cpu_percent: number | null
+  memory_usage_bytes: number | null
+  status: string | null
+  collection_error: string | null
+}
+
+export type AgentHealthReport = {
+  timestamp: string
+  collectors: Record<string, {
+    last_successful_collection: string | null
+    last_collection_duration_seconds: number | null
+    consecutive_failures: number
+    recent_errors: { timestamp: string; error: string }[]
+  }>
+}
+
 export type Snapshot = {
   id: number
   machine_id: string | null
@@ -81,6 +102,12 @@ export type Snapshot = {
   containers: Container[]
   application_health_collection_error: string | null
   application_health: AppCheck[]
+  process_timestamp: string | null
+  process_enabled: boolean
+  process_collection_errors: string[]
+  process_collection_error: string | null
+  agent_health: AgentHealthReport | null
+  processes: MonitoredProcess[]
 }
 
 export type Latest = { machine_id: string; metrics: Snapshot | null }

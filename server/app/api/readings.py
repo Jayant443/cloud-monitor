@@ -57,6 +57,7 @@ def _snapshot_options():
         selectinload(HostMetric.disks),
         selectinload(HostMetric.containers),
         selectinload(HostMetric.application_health),
+        selectinload(HostMetric.processes),
     )
 
 @router.get("/machines", response_model=MachineListResponse)
