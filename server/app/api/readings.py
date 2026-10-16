@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from app.auth import get_current_user
 from app.db import get_db
 from app.models import (
     ApplicationHealthMetric,
@@ -26,7 +27,7 @@ from app.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["metrics read"])
+router = APIRouter(prefix="/api", tags=["metrics read"], dependencies=[Depends(get_current_user)])
 
 def _database_unavailable(exc: SQLAlchemyError) -> HTTPException:
     logger.exception("Read query failed", extra={"event": "metrics_read_failed"})

@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from app.auth import get_current_user
 from app.db import get_db
 from app.models import Alert, AlertEvaluationState, AlertRule
 from app.schemas import (
@@ -18,7 +19,7 @@ from app.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["alerts"])
+router = APIRouter(prefix="/api", tags=["alerts"], dependencies=[Depends(get_current_user)])
 
 
 def _db_unavailable(exc: Exception) -> HTTPException:

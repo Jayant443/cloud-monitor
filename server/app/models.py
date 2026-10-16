@@ -21,6 +21,23 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, foreign, mapped_column, rela
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    display_name: Mapped[str | None] = mapped_column(String(128))
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_users_username", "username"),
+        Index("ix_users_email", "email"),
+    )
+
 class Host(Base):
     __tablename__ = "hosts"
 

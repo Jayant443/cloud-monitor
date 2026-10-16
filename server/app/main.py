@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from app.api.alerts import router as alerts_router
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
 from app.api.readings import router as readings_router
@@ -56,6 +57,7 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type", "Authorization", "X-API-Key"],
 )
 app.include_router(metrics_router)
+app.include_router(auth_router)
 app.include_router(readings_router)
 app.include_router(alerts_router)
 app.include_router(health_router)

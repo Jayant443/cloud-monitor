@@ -395,3 +395,35 @@ class AlertSummaryResponse(FlexibleModel):
     active: int
     acknowledged: int
     critical_active: int
+
+class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=72)
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def email_must_contain_at(cls, value: str) -> str:
+        if "@" not in value:
+            raise ValueError("email must contain '@'")
+        return value.strip()
+
+class UserLogin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    
+    identifier: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=72)
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    display_name: str | None = None
+    created_at: datetime
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
