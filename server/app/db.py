@@ -234,27 +234,34 @@ async def initialize_database() -> bool:
 
         engine = _engine_for(database_url)
         async with engine.begin() as connection:
-            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
             await connection.run_sync(Base.metadata.create_all)
             await _refine_existing_schema(connection)
-            for table_name, time_column in (
-                ("host_metrics", "collected_at"),
-                ("disk_mount_metrics", "sampled_at"),
-                ("container_metrics", "sampled_at"),
-                ("application_health_metrics", "sampled_at"),
-                ("process_metrics", "sampled_at"),
-            ):
-                await connection.execute(
-                    text(
-                        "SELECT create_hypertable("
-                        "to_regclass(:table_name), by_range(:time_column), "
-                        "if_not_exists => TRUE)"
-                    ),
-                    {
-                        "table_name": f"public.{table_name}",
-                        "time_column": time_column,
-                    },
-                )
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
+                for table_name, time_column in (
+                    ("host_metrics", "collected_at"),
+                    ("disk_mount_metrics", "sampled_at"),
+                    ("container_metrics", "sampled_at"),
+                    ("application_health_metrics", "sampled_at"),
+                    ("process_metrics", "sampled_at"),
+                ):
+                    await connection.execute(
+                        text(
+                            "SELECT create_hypertable("
+                            "to_regclass(:table_name), by_range(:time_column), "
+                            "if_not_exists => TRUE)"
+                        ),
+                        {
+                            "table_name": f"public.{table_name}",
+                            "time_column": time_column,
+                        },
+                    )
+        except Exception:
+            logger.warning(
+                "TimescaleDB is not available, running on plain tables",
+                extra={"event": "timescaledb_unavailable"},
+            )
         logger.info("Database tables are ready", extra={"event": "database_initialized"})
         return True
     except Exception:

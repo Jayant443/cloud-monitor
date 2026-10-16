@@ -53,7 +53,7 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type", "Authorization"],
+    allow_headers=["Accept", "Content-Type", "Authorization", "X-API-Key"],
 )
 app.include_router(metrics_router)
 app.include_router(readings_router)
