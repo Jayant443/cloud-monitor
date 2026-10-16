@@ -1,4 +1,4 @@
-{$EC2_HOST} {
+themonitor.duckdns.org {
     # FastAPI backend (internal Compose DNS).
     handle /api/* {
         reverse_proxy backend:8000
