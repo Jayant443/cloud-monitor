@@ -207,17 +207,37 @@ async def _refine_alert_schema(connection) -> None:
             "ON alert_evaluation_state (rule_id)"
         )
     )
-    # Default host-down rule so a stopped agent raises a critical alert
-    # out of the box (threshold matches the UI offline boundary).
+
     await connection.execute(
         text(
             "INSERT INTO alert_rules "
             "(name, metric, condition, threshold, evaluation_interval_seconds, "
             "severity, enabled, consecutive_breaches_required) "
-            "SELECT 'Host offline', 'host_inactivity_seconds', 'gte', 120, 60, "
+            "SELECT 'Host offline', 'host_inactivity_seconds', 'gte', 30, 15, "
             "'critical', true, 2 "
             "WHERE NOT EXISTS ("
             "SELECT 1 FROM alert_rules WHERE metric = 'host_inactivity_seconds'"
+            ")"
+        )
+    )
+    await connection.execute(
+        text(
+            "UPDATE alert_rules SET threshold = 30, "
+            "evaluation_interval_seconds = 15, updated_at = NOW() "
+            "WHERE name = 'Host offline' "
+            "AND metric = 'host_inactivity_seconds' "
+            "AND threshold = 120 AND evaluation_interval_seconds = 60"
+        )
+    )
+    await connection.execute(
+        text(
+            "INSERT INTO alert_rules "
+            "(name, metric, condition, threshold, evaluation_interval_seconds, "
+            "severity, enabled, consecutive_breaches_required) "
+            "SELECT 'Container stopped', 'container_stopped', 'gte', 1, 60, "
+            "'warning', true, 2 "
+            "WHERE NOT EXISTS ("
+            "SELECT 1 FROM alert_rules WHERE metric = 'container_stopped'"
             ")"
         )
     )
