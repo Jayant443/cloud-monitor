@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { AlertsPanel } from './components/AlertsPanel'
 import { AuthPage } from './components/AuthPage'
+import { GettingStarted } from './components/GettingStarted'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Icon, StatCard } from './components/DashboardUI'
 import { HostDetailPanel } from './components/HostDetailPanel'
@@ -17,6 +18,7 @@ import type { AppCheck, AppHealth, Container, Period, Snapshot } from './types/m
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [entered, setEntered] = useState(false)
   const [authChecked, setAuthChecked] = useState(() => !getToken())
   const { machines, snapshots, loading, error, lastUpdated, refresh } = useDashboardData()
   const [selectedId, setSelectedId] = useState('')
@@ -40,6 +42,17 @@ function App() {
   const handleLogout = useCallback(() => {
     setToken(null)
     setUser(null)
+    setEntered(false)
+  }, [])
+
+  const handleAuthed = useCallback((me: AuthUser) => {
+    setUser(me)
+    setEntered(false)
+  }, [])
+
+  const handleEnter = useCallback((view: DashboardView) => {
+    setView(view)
+    setEntered(true)
   }, [])
 
   useEffect(() => {
@@ -170,8 +183,10 @@ function App() {
     {!authChecked
       ? <div className="auth-wrap"><div className="loading-panel"><span className="spinner" />Checking your session…</div></div>
       : !user
-        ? <AuthPage onAuthed={setUser} />
-        : <>
+        ? <AuthPage onAuthed={handleAuthed} />
+        : !entered
+          ? <GettingStarted onEnter={handleEnter} />
+          : <>
     <Sidebar view={view} machines={machines} selectedId={selectedId} onlineCount={onlineCount} loading={loading} alertCount={activeAlerts.length} onView={setView} onSelectHost={selectHost} />
     <main className="main-content">
       <Topbar view={view} title={view === 'alerts' ? 'Alerts' : (selected?.hostname || 'Host details')} lastUpdated={lastUpdated} user={user} onRefresh={handleRefreshAll} onLogout={handleLogout} />

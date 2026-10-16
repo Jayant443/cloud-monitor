@@ -203,6 +203,22 @@ tbody tr:last-child td { border-bottom: 0; }
 .apikey-reveal { display: flex; align-items: center; gap: 10px; margin: 0 17px 4px; padding: 11px 13px; border: 1px dashed #6b5320; border-radius: 8px; background: #0a0a0a; }
 .apikey-reveal code { flex: 1; min-width: 0; overflow-x: auto; color: #f5f5f5; font-size: 12px; white-space: nowrap; }
 .apikey-form-grid { grid-template-columns: 1fr; }
+.gs-wrap { min-height: 100vh; background: #000; animation: auth-in .3s ease; }
+.gs-topbar { position: sticky; top: 0; z-index: 3; display: flex; height: 62px; align-items: center; justify-content: space-between; padding: 0 38px; border-bottom: 1px solid var(--line); background: #000000f2; }
+.gs-brand { color: #fff; font-size: 19px; font-weight: 700; letter-spacing: -.35px; }
+.gs-main { width: min(860px, 100%); margin: 0 auto; padding: 31px 38px 40px; }
+.gs-main h1 { margin: 8px 0 0; color: #fff; font-size: clamp(24px, 2.3vw, 31px); font-weight: 700; letter-spacing: -.9px; }
+.gs-sub { margin: 8px 0 0; color: #9aa3b8; font-size: 12px; line-height: 1.6; }
+.gs-step { margin-top: 14px; padding-bottom: 18px; }
+.gs-text { margin: 0 19px; color: #9aa3b8; font-size: 12px; line-height: 1.7; }
+.gs-text strong, .gs-text code { color: #e0e0e0; }
+.gs-text code { font-size: 11px; }
+.gs-step .primary-button { margin: 14px 19px 0; }
+.gs-code { margin: 14px 19px 0; border: 1px solid #3a3a3a; border-radius: 8px; background: #0a0a0a; overflow: hidden; }
+.gs-code-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 13px; border-bottom: 1px solid #262626; }
+.gs-code-head span { color: #8d96aa; font-size: 9px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
+.gs-code pre { margin: 0; padding: 13px; overflow-x: auto; }
+.gs-code code { color: #f5f5f5; font-size: 11px; line-height: 1.7; white-space: pre; }
 
 @media (min-width: 1500px) { .page-wrap { padding-right: 48px; padding-left: 48px; } }
 @media (max-width: 1150px) { .sidebar { width: 205px; }.main-content { margin-left: 205px; }.topbar { padding: 0 25px; }.page-wrap { padding: 27px 25px; }.stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }.stat-card { padding: 15px 12px; }.stat-value { font-size: 21px; } }
