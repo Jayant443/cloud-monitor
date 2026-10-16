@@ -1,6 +1,6 @@
 import type { Machine, Snapshot } from '../types/metrics'
 
-export const ONLINE_WINDOW_MS = 15 * 1000
+export const ONLINE_WINDOW_MS = 20 * 1000
 export const STALE_WINDOW_MS = 30 * 1000
 
 export type HostStatus = 'online' | 'stale' | 'offline'

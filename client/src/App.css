@@ -197,6 +197,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .topbar-user .avatar { width: 29px; height: 29px; }
 .logout-button { padding: 5px 0; border: 0; color: #8d96aa; background: transparent; font-size: 11px; font-weight: 600; }
 .logout-button:hover { color: #fff; }
+.notice.warning-notice { border-color: #6b5320; color: #f0c46a; background: #2b2111; }
+.notice.warning-notice strong { color: #f5d48a; }
+.notice.warning-notice span { color: #b39a5f; }
+.apikey-reveal { display: flex; align-items: center; gap: 10px; margin: 0 17px 4px; padding: 11px 13px; border: 1px dashed #6b5320; border-radius: 8px; background: #0a0a0a; }
+.apikey-reveal code { flex: 1; min-width: 0; overflow-x: auto; color: #f5f5f5; font-size: 12px; white-space: nowrap; }
+.apikey-form-grid { grid-template-columns: 1fr; }
 
 @media (min-width: 1500px) { .page-wrap { padding-right: 48px; padding-left: 48px; } }
 @media (max-width: 1150px) { .sidebar { width: 205px; }.main-content { margin-left: 205px; }.topbar { padding: 0 25px; }.page-wrap { padding: 27px 25px; }.stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }.stat-card { padding: 15px 12px; }.stat-value { font-size: 21px; } }

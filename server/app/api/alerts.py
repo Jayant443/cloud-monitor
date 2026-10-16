@@ -5,9 +5,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.auth import get_current_user
+from app.auth import get_current_user, host_visible_clause, owned_key_ids, require_visible_host
 from app.db import get_db
-from app.models import Alert, AlertEvaluationState, AlertRule
+from app.models import Alert, AlertEvaluationState, AlertRule, Host, User
 from app.schemas import (
     AlertListResponse,
     AlertResponse,
@@ -66,17 +66,20 @@ def _alert_to_response(alert: Alert) -> AlertResponse:
     )
 
 
-async def _active_counts(db: AsyncSession, rule_ids: list[int]) -> dict[int, int]:
+async def _active_counts(db: AsyncSession, rule_ids: list[int], key_ids: list[int] | None = None) -> dict[int, int]:
     if not rule_ids:
         return {}
-    rows = await db.execute(
+    query = (
         select(Alert.rule_id, func.count())
+        .join(Host, Alert.machine_id == Host.machine_id)
         .where(
             Alert.rule_id.in_(rule_ids),
             Alert.status.in_(("active", "acknowledged")),
         )
-        .group_by(Alert.rule_id)
     )
+    if key_ids is not None:
+        query = query.where(host_visible_clause(Host, key_ids))
+    rows = await db.execute(query.group_by(Alert.rule_id))
     return {rule_id: count for rule_id, count in rows.all()}
 
 
@@ -112,6 +115,7 @@ async def list_alert_rules(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> AlertRuleListResponse:
     try:
         filters = []
@@ -124,7 +128,7 @@ async def list_alert_rules(
             select(AlertRule).where(*filters).order_by(AlertRule.id).limit(limit).offset(offset)
         )
         rules = result.all()
-        counts = await _active_counts(db, [r.id for r in rules])
+        counts = await _active_counts(db, [r.id for r in rules], await owned_key_ids(db, user))
         return AlertRuleListResponse(
             items=[_rule_to_response(r, counts.get(r.id, 0)) for r in rules],
             total=total,
@@ -136,19 +140,19 @@ async def list_alert_rules(
 
 
 @router.get("/alert-rules/{rule_id}", response_model=AlertRuleResponse)
-async def get_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db)) -> AlertRuleResponse:
+async def get_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertRuleResponse:
     try:
         rule = await db.get(AlertRule, rule_id)
         if rule is None:
             raise HTTPException(status_code=404, detail="Alert rule not found")
-        counts = await _active_counts(db, [rule.id])
+        counts = await _active_counts(db, [rule.id], await owned_key_ids(db, user))
         return _rule_to_response(rule, counts.get(rule.id, 0))
     except SQLAlchemyError as exc:
         raise _db_unavailable(exc) from exc
 
 
 @router.patch("/alert-rules/{rule_id}", response_model=AlertRuleResponse)
-async def update_alert_rule(rule_id: int, body: AlertRuleUpdate, db: AsyncSession = Depends(get_db)) -> AlertRuleResponse:
+async def update_alert_rule(rule_id: int, body: AlertRuleUpdate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertRuleResponse:
     try:
         rule = await db.get(AlertRule, rule_id)
         if rule is None:
@@ -170,7 +174,7 @@ async def update_alert_rule(rule_id: int, body: AlertRuleUpdate, db: AsyncSessio
             setattr(rule, key, value)
         await db.commit()
         await db.refresh(rule)
-        counts = await _active_counts(db, [rule.id])
+        counts = await _active_counts(db, [rule.id], await owned_key_ids(db, user))
         return _rule_to_response(rule, counts.get(rule.id, 0))
     except SQLAlchemyError as exc:
         try:
@@ -181,12 +185,12 @@ async def update_alert_rule(rule_id: int, body: AlertRuleUpdate, db: AsyncSessio
 
 
 @router.post("/alert-rules/{rule_id}/enable", response_model=AlertRuleResponse)
-async def enable_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db)) -> AlertRuleResponse:
-    return await update_alert_rule(rule_id, AlertRuleUpdate(enabled=True), db)
+async def enable_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertRuleResponse:
+    return await update_alert_rule(rule_id, AlertRuleUpdate(enabled=True), db, user)
 
 
 @router.post("/alert-rules/{rule_id}/disable", response_model=AlertRuleResponse)
-async def disable_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db)) -> AlertRuleResponse:
+async def disable_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertRuleResponse:
     try:
         rule = await db.get(AlertRule, rule_id)
         if rule is None:
@@ -194,7 +198,7 @@ async def disable_alert_rule(rule_id: int, db: AsyncSession = Depends(get_db)) -
         rule.enabled = False
         await db.commit()
         await db.refresh(rule)
-        counts = await _active_counts(db, [rule.id])
+        counts = await _active_counts(db, [rule.id], await owned_key_ids(db, user))
         return _rule_to_response(rule, counts.get(rule.id, 0))
     except SQLAlchemyError as exc:
         try:
@@ -238,8 +242,11 @@ async def list_alerts(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> AlertListResponse:
     try:
+        key_ids = await owned_key_ids(db, user)
+        visible = host_visible_clause(Host, key_ids)
         filters = []
         if alert_status is not None:
             if alert_status not in ("active", "acknowledged", "resolved"):
@@ -249,11 +256,14 @@ async def list_alerts(
             filters.append(Alert.rule_id == rule_id)
         if machine_id is not None:
             filters.append(Alert.machine_id == machine_id)
-        total = await db.scalar(select(func.count()).select_from(Alert).where(*filters)) or 0
-        result = await db.scalars(
+        base = (
             select(Alert)
-            .options(selectinload(Alert.rule))
-            .where(*filters)
+            .join(Host, Alert.machine_id == Host.machine_id)
+            .where(visible, *filters)
+        )
+        total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+        result = await db.scalars(
+            base.options(selectinload(Alert.rule))
             .order_by(Alert.triggered_at.desc(), Alert.id.desc())
             .limit(limit)
             .offset(offset)
@@ -269,22 +279,30 @@ async def list_alerts(
 
 
 @router.get("/alerts/summary", response_model=AlertSummaryResponse)
-async def alert_summary(db: AsyncSession = Depends(get_db)) -> AlertSummaryResponse:
+async def alert_summary(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertSummaryResponse:
     try:
-        active = await db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "active")) or 0
-        acknowledged = await db.scalar(select(func.count()).select_from(Alert).where(Alert.status == "acknowledged")) or 0
+        key_ids = await owned_key_ids(db, user)
+        visible = host_visible_clause(Host, key_ids)
+        scoped = (
+            select(Alert)
+            .join(Host, Alert.machine_id == Host.machine_id)
+            .where(visible)
+            .subquery()
+        )
+        active = await db.scalar(select(func.count()).select_from(scoped).where(scoped.c.status == "active")) or 0
+        acknowledged = await db.scalar(select(func.count()).select_from(scoped).where(scoped.c.status == "acknowledged")) or 0
         critical_active = await db.scalar(
             select(func.count())
-            .select_from(Alert)
-            .join(AlertRule, Alert.rule_id == AlertRule.id)
-            .where(Alert.status == "active", AlertRule.severity == "critical")
+            .select_from(scoped)
+            .join(AlertRule, scoped.c.rule_id == AlertRule.id)
+            .where(scoped.c.status == "active", AlertRule.severity == "critical")
         ) or 0
         return AlertSummaryResponse(active=active, acknowledged=acknowledged, critical_active=critical_active)
     except SQLAlchemyError as exc:
         raise _db_unavailable(exc) from exc
 
 
-async def _transition_alert(db: AsyncSession, alert_id: int, to_status: str) -> AlertResponse:
+async def _transition_alert(db: AsyncSession, alert_id: int, to_status: str, user: User) -> AlertResponse:
     try:
         result = await db.scalars(
             select(Alert).options(selectinload(Alert.rule)).where(Alert.id == alert_id)
@@ -292,6 +310,8 @@ async def _transition_alert(db: AsyncSession, alert_id: int, to_status: str) -> 
         alert = result.first()
         if alert is None:
             raise HTTPException(status_code=404, detail="Alert not found")
+        # Foreign hosts' alerts look non-existent.
+        await require_visible_host(db, user, alert.machine_id)
         if to_status == "acknowledged":
             if alert.status != "active":
                 raise HTTPException(status_code=409, detail="Only active alerts can be acknowledged")
@@ -316,10 +336,10 @@ async def _transition_alert(db: AsyncSession, alert_id: int, to_status: str) -> 
 
 
 @router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse)
-async def acknowledge_alert(alert_id: int, db: AsyncSession = Depends(get_db)) -> AlertResponse:
-    return await _transition_alert(db, alert_id, "acknowledged")
+async def acknowledge_alert(alert_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertResponse:
+    return await _transition_alert(db, alert_id, "acknowledged", user)
 
 
 @router.post("/alerts/{alert_id}/resolve", response_model=AlertResponse)
-async def resolve_alert(alert_id: int, db: AsyncSession = Depends(get_db)) -> AlertResponse:
-    return await _transition_alert(db, alert_id, "resolved")
+async def resolve_alert(alert_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> AlertResponse:
+    return await _transition_alert(db, alert_id, "resolved", user)

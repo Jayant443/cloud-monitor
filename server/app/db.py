@@ -134,6 +134,24 @@ async def _refine_existing_schema(connection) -> None:
     for index_name in obsolete_indexes:
         await connection.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
 
+    await connection.execute(
+        text(
+            "ALTER TABLE api_keys "
+            "ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT "
+            "REFERENCES users (id) ON DELETE SET NULL"
+        )
+    )
+    await connection.execute(
+        text(
+            "ALTER TABLE hosts "
+            "ADD COLUMN IF NOT EXISTS owner_key_id BIGINT "
+            "REFERENCES api_keys (id) ON DELETE SET NULL"
+        )
+    )
+    await connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_hosts_owner_key_id ON hosts (owner_key_id)")
+    )
+
     await _refine_alert_schema(connection)
 
 

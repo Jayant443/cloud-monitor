@@ -1,4 +1,5 @@
 from app.models import (
+    ApiKey,
     ApplicationHealthMetric,
     ContainerMetric,
     DiskMountMetric,
@@ -9,7 +10,11 @@ from app.models import (
 from app.schemas import MetricsPayload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-async def persist_metrics(session: AsyncSession, payload: MetricsPayload) -> HostMetric:
+async def persist_metrics(
+    session: AsyncSession,
+    payload: MetricsPayload,
+    api_key: ApiKey | None = None,
+) -> HostMetric:
     machine_id = payload.host.machine_id
     host = None
     if machine_id:
@@ -21,6 +26,11 @@ async def persist_metrics(session: AsyncSession, payload: MetricsPayload) -> Hos
                 last_seen_at=payload.timestamp,
             )
             session.add(host)
+        # Last-report-wins ownership: a report authenticated with a stored
+        # API key claims the host for that key. Env-fallback reports (no
+        # stored key) leave ownership untouched.
+        if api_key is not None:
+            host.owner_key_id = api_key.id
         host.hostname = payload.host.hostname
         host.operating_system = payload.host.operating_system
         host.os_version = payload.host.os_version

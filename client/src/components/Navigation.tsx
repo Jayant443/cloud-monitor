@@ -3,7 +3,7 @@ import type { AuthUser } from '../lib/auth'
 import type { Machine } from '../types/metrics'
 import { Icon } from './DashboardUI'
 
-export type DashboardView = 'overview' | 'hosts' | 'alerts'
+export type DashboardView = 'overview' | 'hosts' | 'alerts' | 'settings'
 
 export function Sidebar({ view, machines, selectedId, onlineCount, loading, alertCount, onView, onSelectHost }: {
   view: DashboardView
@@ -22,6 +22,7 @@ export function Sidebar({ view, machines, selectedId, onlineCount, loading, aler
       <button className={view === 'overview' ? 'active' : ''} onClick={() => onView('overview')}><Icon name="grid" /> Overview</button>
       <button className={view === 'hosts' ? 'active' : ''} onClick={() => onView('hosts')}><Icon name="server" /> Hosts <span className="nav-count">{machines.length}</span></button>
       <button className={view === 'alerts' ? 'active' : ''} onClick={() => onView('alerts')}><Icon name="pulse" /> Alerts {alertCount > 0 && <span className="nav-count">{alertCount}</span>}</button>
+      <button className={view === 'settings' ? 'active' : ''} onClick={() => onView('settings')}><Icon name="box" /> Settings</button>
     </nav>
     <div className="side-label host-label">MONITORED HOSTS</div>
     <div className="sidebar-hosts">

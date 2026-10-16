@@ -427,3 +427,19 @@ class UserResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class ApiKeyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    name: str | None = None
+    key_prefix: str
+    is_active: bool
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+class ApiKeyCreatedResponse(ApiKeyResponse):
+    key: str

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { AlertsPanel } from './components/AlertsPanel'
 import { AuthPage } from './components/AuthPage'
+import { SettingsPanel } from './components/SettingsPanel'
 import { Icon, StatCard } from './components/DashboardUI'
 import { HostDetailPanel } from './components/HostDetailPanel'
 import { HostResourceCard } from './components/HostResourceCard'
@@ -130,8 +131,20 @@ function App() {
     setRefreshKey((key) => key + 1)
   }, [refresh])
 
+  const handleDeleteHost = useCallback(async (host: { machine_id: string; hostname: string | null }) => {
+    if (!window.confirm(`Delete host "${host.hostname || host.machine_id}" and all of its metrics and alerts?`)) return
+    try {
+      await monitoringApi.removeHost(host.machine_id)
+      setSelectedId('')
+      handleRefreshAll()
+    } catch (cause) {
+      setDetailError(cause instanceof Error ? cause.message : 'Could not delete host')
+      setView('hosts')
+    }
+  }, [handleRefreshAll])
+
   useEffect(() => {
-    const timer = window.setInterval(handleRefreshAll, 30_000)
+    const timer = window.setInterval(handleRefreshAll, 5_000)
     return () => { window.clearInterval(timer) }
   }, [handleRefreshAll])
 
@@ -147,7 +160,9 @@ function App() {
 
   const heading = view === 'alerts'
     ? { eyebrow: 'MONITORING / ALERTS', title: 'Alerts', sub: 'Active, triaged, and historical alert states.' }
-    : view === 'overview'
+    : view === 'settings'
+      ? { eyebrow: 'MONITORING / SETTINGS', title: 'Settings', sub: 'API keys for agents and workspace settings.' }
+      : view === 'overview'
       ? { eyebrow: 'MONITORING / SYSTEM OVERVIEW', title: 'System overview', sub: 'A real-time view of your infrastructure health.' }
       : { eyebrow: 'MONITORING / HOST DETAILS', title: selected?.hostname || 'Host overview', sub: `${selected?.operating_system ?? 'Host'}${selected?.os_version ? ` · ${selected.os_version}` : ''}${selected?.architecture ? ` · ${selected.architecture}` : ''}` }
 
@@ -167,16 +182,19 @@ function App() {
             const status = hostStatus(selected)
             const label = status === 'online' ? 'Online' : status === 'stale' ? 'Stale' : 'Offline'
             return <span className={`host-state state-${status}`} title={`Last seen ${formatRelative(selected.last_seen_at)}`}><span className="status-dot" />{label} · {formatRelative(selected.last_seen_at)}</span>
-          })()}{view !== 'alerts' && <label className="period-select"><span className="sr-only">History period</span><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label>}</div>
+          })()}<button className="text-button" onClick={() => { if (selected) void handleDeleteHost(selected) }}>Delete host</button>{view !== 'alerts' && view !== 'settings' && <label className="period-select"><span className="sr-only">History period</span><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label>}</div>
         </div>
 
         {error && <div className="notice error-notice"><strong>Couldn’t reach the monitoring API.</strong><span>{error}</span><button onClick={handleRefreshAll}>Try again</button><small>API: {API_BASE_URL}</small></div>}
-        {loading && machines.length === 0 && !error && view !== 'alerts' && <div className="loading-panel"><span className="spinner" />Connecting to your monitoring server…</div>}
-        {!loading && machines.length === 0 && !error && view !== 'alerts' && <div className="empty-panel"><div className="empty-icon"><Icon name="server" size={25} /></div><h2>No monitored hosts yet</h2><p>Once an agent sends its first metrics payload, the host will appear here.</p><span>Waiting for agent data</span></div>}
+        {loading && machines.length === 0 && !error && view !== 'alerts' && view !== 'settings' && <div className="loading-panel"><span className="spinner" />Connecting to your monitoring server…</div>}
+        {!loading && machines.length === 0 && !error && view !== 'alerts' && view !== 'settings' && <div className="empty-panel"><div className="empty-icon"><Icon name="server" size={25} /></div><h2>No monitored hosts yet</h2><p>Once an agent sends its first metrics payload, the host will appear here.</p><span>Waiting for agent data</span></div>}
 
         {view === 'alerts'
           ? <><AlertsPanel summary={alertSummary} active={activeAlerts} acknowledged={ackedAlerts} history={alertHistory} rules={alertRules} loading={alertsLoading} error={alertsError} onChanged={() => { void refreshAlerts() }} />
-            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;15s · Stale &lt;30s · Offline after 30s</span></footer></>
+            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 5 seconds · Online &lt;20s · Stale &lt;30s · Offline after 30s</span></footer></>
+          : view === 'settings'
+            ? <><SettingsPanel />
+            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 5 seconds · Online &lt;20s · Stale &lt;30s · Offline after 30s</span></footer></>
           : machines.length > 0 && <>
           {view === 'overview' && <section className="stat-grid" aria-label="Infrastructure summary">
             <StatCard label="Monitored hosts" value={`${onlineCount} / ${machines.length}`} note={`${machines.length - onlineCount} offline`} icon="server" tone="violet" />
@@ -187,7 +205,7 @@ function App() {
             <div style={{ height: 14 }} />
             <HostDetailPanel latest={latest} history={history} containers={containers} appHealth={appHealth} appHistory={appHistory} loading={detailLoading} error={detailError} period={period} />
           </>}
-          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;15s · Stale &lt;30s · Offline after 30s</span></footer>
+          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 5 seconds · Online &lt;20s · Stale &lt;30s · Offline after 30s</span></footer>
         </>}
       </div>
     </main>

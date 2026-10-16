@@ -50,6 +50,8 @@ async function mutate<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body
 
 export const monitoringApi = {
   hosts: (signal?: AbortSignal) => api<Page<Machine>>('/api/machines?limit=100&offset=0', signal),
+  removeHost: (machineId: string, signal?: AbortSignal) =>
+    mutate<void>(`/api/machines/${encodeURIComponent(machineId)}`, 'DELETE', undefined, signal),
   latest: (machineId: string, signal?: AbortSignal) =>
     api<Latest>(`/api/machines/${encodeURIComponent(machineId)}/metrics/latest`, signal),
   history: (machineId: string, query: string, signal?: AbortSignal) =>
@@ -91,3 +93,24 @@ export const alertsApi = {
 }
 
 export type HostSnapshots = Record<string, Snapshot | null>
+
+export interface ApiKeyItem {
+  id: number
+  name: string | null
+  key_prefix: string
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+}
+
+export interface ApiKeyCreated extends ApiKeyItem {
+  key: string
+}
+
+export const apiKeysApi = {
+  list: (signal?: AbortSignal) => api<ApiKeyItem[]>('/api/api-keys', signal),
+  create: (body: { name?: string }, signal?: AbortSignal) =>
+    mutate<ApiKeyCreated>('/api/api-keys', 'POST', body, signal),
+  revoke: (id: number, signal?: AbortSignal) =>
+    mutate<void>(`/api/api-keys/${id}`, 'DELETE', undefined, signal),
+}

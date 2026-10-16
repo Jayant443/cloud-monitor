@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.auth import require_api_key
+from app.models import ApiKey
 from app.schemas import MetricsAccepted, MetricsPayload
 from app.services.metrics import persist_metrics
 
@@ -11,9 +12,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["metrics"])
 
 @router.post("/metrics", response_model=MetricsAccepted, status_code=status.HTTP_202_ACCEPTED,)
-async def receive_metrics(payload: MetricsPayload, db: AsyncSession = Depends(get_db), _: None = Depends(require_api_key)) -> MetricsAccepted:
+async def receive_metrics(payload: MetricsPayload, db: AsyncSession = Depends(get_db), api_key: ApiKey | None = Depends(require_api_key)) -> MetricsAccepted:
     try:
-        metric = await persist_metrics(db, payload)
+        metric = await persist_metrics(db, payload, api_key)
         await db.commit()
     except SQLAlchemyError as exc:
         try:

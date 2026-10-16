@@ -5,13 +5,16 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.auth import get_current_user
+from app.auth import get_current_user, host_visible_clause, owned_key_ids, require_visible_host
 from app.db import get_db
 from app.models import (
+    Alert,
+    AlertEvaluationState,
     ApplicationHealthMetric,
     ContainerMetric,
     Host,
     HostMetric,
+    User,
 )
 from app.schemas import (
     ApplicationHealthMetricResponse,
@@ -49,9 +52,8 @@ def _validate_time_range(start_time: datetime | None, end_time: datetime | None)
             detail="start_time must be earlier than or equal to end_time",
         )
 
-async def _require_machine(session: AsyncSession, machine_id: str) -> None:
-    if await session.get(Host, machine_id) is None:
-        raise HTTPException(status_code=404, detail="Machine not found")
+async def _require_machine(session: AsyncSession, user: User, machine_id: str) -> None:
+    await require_visible_host(session, user, machine_id)
 
 def _snapshot_options():
     return (
@@ -62,10 +64,12 @@ def _snapshot_options():
     )
 
 @router.get("/machines", response_model=MachineListResponse)
-async def list_machines(limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db)) -> MachineListResponse:
+async def list_machines(limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> MachineListResponse:
     try:
-        total = await db.scalar(select(func.count()).select_from(Host)) or 0
-        result = await db.scalars(select(Host).order_by(Host.last_seen_at.desc(), Host.machine_id).limit(limit).offset(offset))
+        key_ids = await owned_key_ids(db, user)
+        visible = host_visible_clause(Host, key_ids)
+        total = await db.scalar(select(func.count()).select_from(Host).where(visible)) or 0
+        result = await db.scalars(select(Host).where(visible).order_by(Host.last_seen_at.desc(), Host.machine_id).limit(limit).offset(offset))
         return MachineListResponse(
             items=[MachineResponse.model_validate(host) for host in result.all()],
             total=total,
@@ -76,9 +80,9 @@ async def list_machines(limit: int = Query(default=100, ge=1, le=500), offset: i
         raise _database_unavailable(exc) from exc
 
 @router.get("/machines/{machine_id}/metrics/latest", response_model=LatestMetricsResponse,)
-async def get_latest_metrics(machine_id: str, db: AsyncSession = Depends(get_db)) -> LatestMetricsResponse:
+async def get_latest_metrics(machine_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> LatestMetricsResponse:
     try:
-        await _require_machine(db, machine_id)
+        await _require_machine(db, user, machine_id)
         result = await db.scalars(
             select(HostMetric)
             .where(HostMetric.machine_id == machine_id)
@@ -95,10 +99,10 @@ async def get_latest_metrics(machine_id: str, db: AsyncSession = Depends(get_db)
         raise _database_unavailable(exc) from exc
 
 @router.get("/machines/{machine_id}/metrics/history", response_model=MetricHistoryResponse)
-async def get_metric_history(machine_id: str, start_time: datetime | None = None, end_time: datetime | None = None, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db)) -> MetricHistoryResponse:
+async def get_metric_history(machine_id: str, start_time: datetime | None = None, end_time: datetime | None = None, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> MetricHistoryResponse:
     _validate_time_range(start_time, end_time)
     try:
-        await _require_machine(db, machine_id)
+        await _require_machine(db, user, machine_id)
         filters = [HostMetric.machine_id == machine_id]
         if start_time is not None:
             filters.append(HostMetric.collected_at >= start_time)
@@ -127,10 +131,10 @@ async def get_metric_history(machine_id: str, start_time: datetime | None = None
         raise _database_unavailable(exc) from exc
 
 @router.get("/containers/latest", response_model=LatestContainerListResponse)
-async def list_latest_containers(machine_id: str | None = None, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db)) -> LatestContainerListResponse:
+async def list_latest_containers(machine_id: str | None = None, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> LatestContainerListResponse:
     try:
         if machine_id is not None:
-            await _require_machine(db, machine_id)
+            await _require_machine(db, user, machine_id)
 
         rank = func.row_number().over(
             partition_by=(HostMetric.machine_id, ContainerMetric.container_id),
@@ -156,6 +160,11 @@ async def list_latest_containers(machine_id: str | None = None, limit: int = Que
         )
         if machine_id is not None:
             ranked_query = ranked_query.where(HostMetric.machine_id == machine_id)
+        else:
+            key_ids = await owned_key_ids(db, user)
+            ranked_query = ranked_query.join(
+                Host, HostMetric.machine_id == Host.machine_id
+            ).where(host_visible_clause(Host, key_ids))
         ranked = ranked_query.subquery()
 
         latest_filter = ranked.c.reading_rank == 1
@@ -202,9 +211,9 @@ async def list_latest_containers(machine_id: str | None = None, limit: int = Que
         raise _database_unavailable(exc) from exc
 
 @router.get("/machines/{machine_id}/application-health/latest", response_model=ApplicationHealthResponse)
-async def get_latest_application_health(machine_id: str, db: AsyncSession = Depends(get_db)) -> ApplicationHealthResponse:
+async def get_latest_application_health(machine_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> ApplicationHealthResponse:
     try:
-        await _require_machine(db, machine_id)
+        await _require_machine(db, user, machine_id)
         latest_result = await db.execute(
             select(
                 HostMetric.id,
@@ -253,10 +262,11 @@ async def get_application_health_history(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> ApplicationHealthHistoryResponse:
     _validate_time_range(start_time, end_time)
     try:
-        await _require_machine(db, machine_id)
+        await _require_machine(db, user, machine_id)
         filters = [HostMetric.machine_id == machine_id]
         if start_time is not None:
             filters.append(ApplicationHealthMetric.sampled_at >= start_time)
@@ -295,3 +305,54 @@ async def get_application_health_history(
         )
     except SQLAlchemyError as exc:
         raise _database_unavailable(exc) from exc
+
+
+@router.delete("/machines/{machine_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_machine(machine_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    """Delete a host and all of its metrics/alerts. Only your own (or
+    unclaimed) hosts; foreign hosts look non-existent."""
+    from app.models import (
+        ApplicationHealthMetric as _AppHealth,
+        ContainerMetric as _Containers,
+        DiskMountMetric as _Disks,
+        HostMetric as _Metrics,
+        ProcessMetric as _Processes,
+    )
+
+    try:
+        await _require_machine(db, user, machine_id)
+        metric_ids = (
+            await db.scalars(select(_Metrics.id).where(_Metrics.machine_id == machine_id))
+        ).all()
+        await db.execute(Alert.__table__.delete().where(Alert.machine_id == machine_id))
+        await db.execute(
+            AlertEvaluationState.__table__.delete().where(
+                AlertEvaluationState.machine_id == machine_id
+            )
+        )
+        if metric_ids:
+            for table in (
+                _Disks.__table__,
+                _Containers.__table__,
+                _AppHealth.__table__,
+                _Processes.__table__,
+            ):
+                await db.execute(
+                    table.delete().where(table.c.host_metric_id.in_(metric_ids))
+                )
+            await db.execute(
+                _Metrics.__table__.delete().where(_Metrics.id.in_(metric_ids))
+            )
+        await db.execute(Host.__table__.delete().where(Host.machine_id == machine_id))
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            try:
+                await db.rollback()
+            except SQLAlchemyError:
+                pass
+            raise _database_unavailable(exc) from exc
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(exc) from exc
+    logger.info("host deleted", extra={"event": "host_deleted", "machine_id": machine_id})
+    return None
