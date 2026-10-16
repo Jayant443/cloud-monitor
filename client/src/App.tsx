@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { AlertsPanel } from './components/AlertsPanel'
+import { AuthPage } from './components/AuthPage'
 import { Icon, StatCard } from './components/DashboardUI'
 import { HostDetailPanel } from './components/HostDetailPanel'
 import { HostResourceCard } from './components/HostResourceCard'
@@ -8,11 +9,14 @@ import { OverviewPanel } from './components/OverviewPanel'
 import { Sidebar, Topbar, type DashboardView } from './components/Navigation'
 import { useDashboardData } from './hooks/useDashboardData'
 import { API_BASE_URL, alertsApi, monitoringApi } from './lib/api'
+import { authApi, getToken, setToken, setUnauthorizedHandler, type AuthUser } from './lib/auth'
 import { formatRelative, hostStatus, isOnline } from './lib/format'
 import type { AlertItem, AlertRule, AlertSummary } from './types/alerts'
 import type { AppCheck, AppHealth, Container, Period, Snapshot } from './types/metrics'
 
 function App() {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authChecked, setAuthChecked] = useState(() => !getToken())
   const { machines, snapshots, loading, error, lastUpdated, refresh } = useDashboardData()
   const [selectedId, setSelectedId] = useState('')
   const [period, setPeriod] = useState<Period>('24h')
@@ -31,6 +35,27 @@ function App() {
   const [alertRules, setAlertRules] = useState<AlertRule[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
   const [alertsError, setAlertsError] = useState('')
+
+  const handleLogout = useCallback(() => {
+    setToken(null)
+    setUser(null)
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler(handleLogout)
+    return () => setUnauthorizedHandler(null)
+  }, [handleLogout])
+
+  useEffect(() => {
+    if (!getToken()) return
+    const controller = new AbortController()
+    authApi.me(controller.signal).then((me) => {
+      if (!controller.signal.aborted) { setUser(me); setAuthChecked(true) }
+    }).catch(() => {
+      if (!controller.signal.aborted) { setToken(null); setUser(null); setAuthChecked(true) }
+    })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (!machines.length) { setSelectedId(''); return }
@@ -127,9 +152,14 @@ function App() {
       : { eyebrow: 'MONITORING / HOST DETAILS', title: selected?.hostname || 'Host overview', sub: `${selected?.operating_system ?? 'Host'}${selected?.os_version ? ` · ${selected.os_version}` : ''}${selected?.architecture ? ` · ${selected.architecture}` : ''}` }
 
   return <div className="app-shell">
+    {!authChecked
+      ? <div className="auth-wrap"><div className="loading-panel"><span className="spinner" />Checking your session…</div></div>
+      : !user
+        ? <AuthPage onAuthed={setUser} />
+        : <>
     <Sidebar view={view} machines={machines} selectedId={selectedId} onlineCount={onlineCount} loading={loading} alertCount={activeAlerts.length} onView={setView} onSelectHost={selectHost} />
     <main className="main-content">
-      <Topbar view={view} title={view === 'alerts' ? 'Alerts' : (selected?.hostname || 'Host details')} lastUpdated={lastUpdated} onRefresh={handleRefreshAll} />
+      <Topbar view={view} title={view === 'alerts' ? 'Alerts' : (selected?.hostname || 'Host details')} lastUpdated={lastUpdated} user={user} onRefresh={handleRefreshAll} onLogout={handleLogout} />
       <div className="page-wrap">
         <div className="page-heading">
           <div><div className="eyebrow">{heading.eyebrow}</div><h1>{heading.title}</h1><p>{heading.sub}</p></div>
@@ -146,7 +176,7 @@ function App() {
 
         {view === 'alerts'
           ? <><AlertsPanel summary={alertSummary} active={activeAlerts} acknowledged={ackedAlerts} history={alertHistory} rules={alertRules} loading={alertsLoading} error={alertsError} onChanged={() => { void refreshAlerts() }} />
-            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;30s · Stale &lt;2m · Offline after 2m</span></footer></>
+            <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;15s · Stale &lt;30s · Offline after 30s</span></footer></>
           : machines.length > 0 && <>
           {view === 'overview' && <section className="stat-grid" aria-label="Infrastructure summary">
             <StatCard label="Monitored hosts" value={`${onlineCount} / ${machines.length}`} note={`${machines.length - onlineCount} offline`} icon="server" tone="violet" />
@@ -157,10 +187,11 @@ function App() {
             <div style={{ height: 14 }} />
             <HostDetailPanel latest={latest} history={history} containers={containers} appHealth={appHealth} appHistory={appHistory} loading={detailLoading} error={detailError} period={period} />
           </>}
-          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;30s · Stale &lt;2m · Offline after 2m</span></footer>
+          <footer className="page-footer"><span>TheMonitor</span><span>Data refreshes every 30 seconds · Online &lt;15s · Stale &lt;30s · Offline after 30s</span></footer>
         </>}
       </div>
     </main>
+    </>}
   </div>
 }
 

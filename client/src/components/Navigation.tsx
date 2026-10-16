@@ -1,4 +1,5 @@
 import { formatRelative, hostStatus } from '../lib/format'
+import type { AuthUser } from '../lib/auth'
 import type { Machine } from '../types/metrics'
 import { Icon } from './DashboardUI'
 
@@ -31,6 +32,7 @@ export function Sidebar({ view, machines, selectedId, onlineCount, loading, aler
   </aside>
 }
 
-export function Topbar({ view, title, lastUpdated, onRefresh }: { view: DashboardView; title: string; lastUpdated: Date | null; onRefresh: () => void }) {
-  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><Icon name="chevron" size={14} /><strong>{view === 'overview' ? 'Overview' : title}</strong></div><div className="top-actions"><span className="updated-label"><span className="live-indicator" />Updated {lastUpdated ? formatRelative(lastUpdated.toISOString()) : '—'}</span><button className="refresh-button" onClick={onRefresh} aria-label="Refresh metrics"><Icon name="refresh" size={16} /><span>Refresh</span></button><div className="avatar">OP</div></div></header>
+export function Topbar({ view, title, lastUpdated, user, onRefresh, onLogout }: { view: DashboardView; title: string; lastUpdated: Date | null; user: AuthUser | null; onRefresh: () => void; onLogout: () => void }) {
+  const initials = (user?.display_name || user?.username || '?').trim().slice(0, 2).toUpperCase()
+  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><Icon name="chevron" size={14} /><strong>{view === 'overview' ? 'Overview' : title}</strong></div><div className="top-actions"><span className="updated-label"><span className="live-indicator" />Updated {lastUpdated ? formatRelative(lastUpdated.toISOString()) : '—'}</span><button className="refresh-button" onClick={onRefresh} aria-label="Refresh metrics"><Icon name="refresh" size={16} /><span>Refresh</span></button><span className="topbar-user"><span className="avatar" title={user?.username}>{initials}</span><button className="logout-button" onClick={onLogout}>Log out</button></span></div></header>
 }

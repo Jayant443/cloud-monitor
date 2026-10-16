@@ -1,13 +1,20 @@
 import type { AppHealth, AppHistory, Container, History, Latest, Machine, Page, Snapshot } from '../types/metrics'
 import type { AlertItem, AlertPage, AlertRule, AlertRulePage, AlertSummary } from '../types/alerts'
+import { getToken, notifyUnauthorized } from './auth'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+
+function authHeaders(): Record<string, string> {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     signal,
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...authHeaders() },
   })
+  if (response.status === 401) notifyUnauthorized()
   if (!response.ok) {
     let detail = `Request failed (${response.status})`
     try {
@@ -24,9 +31,10 @@ async function mutate<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     signal,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...authHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (response.status === 401) notifyUnauthorized()
   if (response.status === 204) return undefined as T
   if (!response.ok) {
     let detail = `Request failed (${response.status})`
