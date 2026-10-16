@@ -19,6 +19,11 @@ from app.logging_config import configure_logging
 configure_logging()
 logger = logging.getLogger(__name__)
 
+def _docs_enabled() -> bool:
+    return os.getenv("ENABLE_API_DOCS", "true").strip().casefold() in {
+        "1", "true", "yes", "on",
+    }
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await initialize_database()
@@ -41,7 +46,14 @@ async def lifespan(_: FastAPI):
                 pass
         await close_database()
 
-app = FastAPI(title="Cloud Monitoring API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Cloud Monitoring API",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled() else None,
+    redoc_url="/redoc" if _docs_enabled() else None,
+    openapi_url="/openapi.json" if _docs_enabled() else None,
+)
 cors_origins = [
     origin.strip().rstrip("/")
     for origin in os.getenv(

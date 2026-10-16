@@ -1,0 +1,11 @@
+{$EC2_HOST} {
+    # FastAPI backend (internal Compose DNS).
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # React frontend for everything else.
+    handle {
+        reverse_proxy frontend:80
+    }
+}
