@@ -2,7 +2,7 @@ import type { AppHealth, AppHistory, Container, History, Latest, Machine, Page, 
 import type { AlertItem, AlertPage, AlertRule, AlertRulePage, AlertSummary } from '../types/alerts'
 import { getToken, notifyUnauthorized } from './auth'
 
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 function authHeaders(): Record<string, string> {
   const token = getToken()
