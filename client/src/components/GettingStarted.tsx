@@ -9,7 +9,7 @@ const RUN_COMMAND = `docker run -d --name monitoring-agent --restart unless-stop
   -v /proc:/host/proc:ro \\
   -v /sys:/host/sys:ro \\
   -v /:/rootfs:ro \\
-  -e BACKEND_URL="http://YOUR_BACKEND_IP:8000" \\
+  -e BACKEND_URL="https://themonitor.duckdns.org" \\
   -e API_KEY="your-api-key" \\
   morgoth443/cloud-monitor-agent:latest`
 
