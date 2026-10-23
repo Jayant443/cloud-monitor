@@ -18,7 +18,7 @@ import type { AppCheck, AppHealth, Container, Period, Snapshot } from './types/m
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [entered, setEntered] = useState(false)
+  const [entered, setEntered] = useState(true)
   const [authChecked, setAuthChecked] = useState(() => !getToken())
   const { machines, snapshots, loading, error, lastUpdated, refresh } = useDashboardData()
   const [selectedId, setSelectedId] = useState('')
@@ -47,7 +47,7 @@ function App() {
 
   const handleAuthed = useCallback((me: AuthUser) => {
     setUser(me)
-    setEntered(false)
+    setEntered(true)
   }, [])
 
   const handleEnter = useCallback((view: DashboardView) => {
@@ -189,7 +189,7 @@ function App() {
           : <>
     <Sidebar view={view} machines={machines} selectedId={selectedId} onlineCount={onlineCount} loading={loading} alertCount={activeAlerts.length} onView={setView} onSelectHost={selectHost} />
     <main className="main-content">
-      <Topbar view={view} title={view === 'alerts' ? 'Alerts' : (selected?.hostname || 'Host details')} lastUpdated={lastUpdated} user={user} onRefresh={handleRefreshAll} onLogout={handleLogout} />
+      <Topbar view={view} title={view === 'alerts' ? 'Alerts' : (selected?.hostname || 'Host details')} lastUpdated={lastUpdated} user={user} onRefresh={handleRefreshAll} onGettingStarted={() => setEntered(false)} onLogout={handleLogout} />
       <div className="page-wrap">
         <div className="page-heading">
           <div><div className="eyebrow">{heading.eyebrow}</div><h1>{heading.title}</h1><p>{heading.sub}</p></div>
